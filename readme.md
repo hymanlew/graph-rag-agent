@@ -1,16 +1,15 @@
 # GraphRAG + DeepSearch 实现与问答系统（Agent）构建
 
-本项目聚焦于结合 **GraphRAG** 与 **私域 Deep Search** 的方式，实现可解释、可推理的智能问答系统，同时结合多 Agent 协作与知识图谱增强，构建完整的 RAG 智能交互解决方案。
+本项目聚焦于结合 **GraphRAG** 与 **私域深度搜索 Deep Search** 的方式，实现可解释、可推理的智能问答系统，同时结合多 Agent 协作与知识图谱增强，构建完整的 RAG 智能交互解决方案。
 
-> 💡 灵感来源于检索增强推理与深度搜索场景，探索 RAG 与 Agent 在未来应用中的结合路径。
+> DeepSearch 是一种基于人工智能的高级搜索技术，旨在通过深度学习和大型语言模型（LLM）实现从传统关键词匹配到语义理解的转型。它通过循环执行搜索、阅读和推理三个核心步骤，逐步优化搜索结果，直至找到最优答案。这种迭代机制使其在复杂查询和知识挖掘中表现出色。
 
 ## 🏠 项目架构图
 
-**注：本项目已于4.28被[deepwiki](https://deepwiki.org/)官方收录，有助于理解整体的项目代码和核心的工作原理，地址：https://deepwiki.com/1517005260/graph-rag-agent**
-
-由Claude生成
+**理解整体的项目代码和核心的工作原理，地址：https://deepwiki.com/1517005260/graph-rag-agent**
 
 ![svg](./assets/structure.svg)
+
 
 ## 📂 项目结构
 
@@ -88,8 +87,6 @@ graph-rag-agent/
 
 ## 🚀 相关资源
 
-- [大模型推理能力不断增强，RAG 和 Agent 何去何从](https://www.bilibili.com/video/BV1i6RNYpEwV)  
-- [企业级知识图谱交互问答系统方案](https://www.bilibili.com/video/BV1U599YrE26)  
 - [Jean - 用国产大模型 + LangChain + Neo4j 建图全过程](https://zhuanlan.zhihu.com/p/716089164)
 - [GraphRAG vs DeepSearch？GraphRAG 提出者给你答案](https://mp.weixin.qq.com/s/FOT4pkEPHJR8xFvcVk1YFQ)
 
