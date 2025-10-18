@@ -83,7 +83,8 @@ driver.close()
 
 
 from neo4j_graphrag.indexes import upsert_vectors
-from neo4j_graphrag.types import EntityType
+from neo4j_graphrag.types import EntityType, SearchType
+
 vector = embedder.embed_query(text)
 
 # Upsert the vector
@@ -398,7 +399,7 @@ async def main():
 
     print("测试嵌入模型")
     test_embeddings("本地", base_url="embed_base_url", model="model_name")
-    test_embeddings("OpenAI", api_key=api_key)
+    test_embeddings("OpenAI", api_key="api_key")
 
     llm = ChatOpenAI(model_name="model_name")
     embeddings = OpenAIEmbeddings()
@@ -532,19 +533,26 @@ async def main():
     
     Neo4jVector 是 LangChain 专门用于在 Neo4j 图数据库中集成向量搜索功能，实现图检索增强生成（GraphRAG）。
     """
+    url = "bolt://localhost:7687"
+    username = "neo4j"
+    password = "pleaseletmein"
+    Neo4jVector.from_documents(
+        embedding=embeddings,
+        documents=docs,
+        url=url,
+        username = username,
+        password = password,
+        database="neo4j",  # 目标数据库
+    )
     await asyncio.to_thread(
         Neo4jVector.from_existing_graph,  # 基于现有图数据结构创建向量索引属性，不改变结构，只添加属性
         embedding=embeddings,  # 使用的嵌入模型（如OpenAIEmbeddings）
-        url="neo4j_url",  # Neo4j数据库连接信息
-        username="neo4j_username",
-        password="neo4j_password",
-        database="neo4j",  # 目标数据库
         node_label="研究内容",  # 指定了具体的节点标签，只处理这个标签的节点
         text_node_properties=["id", "text"],  # 从这些属性构建文本
         embedding_node_property="embedding",  # 向量存储的属性名
         index_name="vector_index",  # 向量索引名称，用于向量检索
         keyword_index_name="entity_index",  # 全文检索索引名称，用于关键词检索
-        search_type="hybrid"  # 搜索策略：混合搜索，使用混合搜索类型
+        search_type=SearchType.HYBRID,  # 搜索策略：混合搜索，使用混合搜索类型
     )
     print("向量索引创建完成")
 

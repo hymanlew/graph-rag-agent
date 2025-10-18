@@ -84,42 +84,76 @@ class DeepResearchAgent(BaseAgent):
         pass
     
     def _setup_tools(self) -> List:
-        """设置工具，根据模式选择不同的工具组合"""
+        """设置工具，根据模式选择不同的工具组合
+        
+        根据是否启用深度工具和思考过程显示模式，配置Agent可用的工具集合。
+        包括基础研究工具、知识图谱探索工具、推理链分析工具和流式工具。
+        
+        返回:
+            List: 配置好的工具对象列表
+        """
         tools = []
         
         # 基础研究工具 - 根据显示思考过程的模式选择
         if self.show_thinking:
-            # 思考过程可见模式
+            # 思考过程可见模式，返回包含完整推理过程的工具
             tools.append(self.research_tool.get_thinking_tool())
         else:
-            # 标准模式
+            # 标准模式，返回简洁结果的工具
             tools.append(self.research_tool.get_tool())
         
         # 添加增强工具 - 只有使用增强版深度研究工具时才有
         if self.use_deeper_tool:
-            # 添加知识图谱探索工具
+            # 添加知识图谱探索工具，用于发现相关知识节点和连接
             tools.append(self.exploration_tool)
             
-            # 添加推理链分析工具
+            # 添加推理链分析工具，用于评估和优化推理过程
             tools.append(self.reasoning_analysis_tool)
         
-        # 流式工具总是添加
+        # 流式工具总是添加，支持异步流式输出
         tools.append(self.stream_tool)
             
         return tools
     
     def _add_retrieval_edges(self, workflow):
-        """添加从检索到生成的边"""
+        """添加从检索到生成的边
+        
+        在LangGraph工作流中设置检索结果到回答生成阶段的转换路径。
+        对于深度研究Agent，采用简单的直接转换模式。
+        
+        参数:
+            workflow: LangGraph工作流对象，用于添加边定义
+        """
         # 简单的从检索直接到生成
         workflow.add_edge("retrieve", "generate")
     
     def _extract_keywords(self, query: str) -> Dict[str, List[str]]:
-        """从查询中提取关键词"""
+        """从查询中提取关键词
+        
+        利用研究工具的关键词提取能力，将查询分解为不同级别的关键词。
+        这些关键词用于优化搜索和知识图谱探索。
+        
+        参数:
+            query: 用户查询字符串
+            
+        返回:
+            Dict: 包含不同级别的关键词列表的字典
+        """
         # 使用研究工具的关键词提取功能
         return self.research_tool.extract_keywords(query)
     
     def _generate_node(self, state):
-        """生成回答节点逻辑 - 处理各种返回格式"""
+        """生成回答节点逻辑 - 处理各种返回格式
+        
+        LangGraph工作流中的生成节点，负责处理查询并生成最终回答。
+        支持多种结果格式处理，包括缓存检查、复杂结构处理和思考过程提取。
+        
+        参数:
+            state: 当前工作流状态，包含消息历史和配置信息
+            
+        返回:
+            Dict: 更新后的状态，包含生成的回答消息
+        """
         messages = state["messages"]
         
         # 安全地获取问题和检索结果
@@ -235,66 +269,73 @@ class DeepResearchAgent(BaseAgent):
         """
         向Agent提问，可选显示思考过程
         
+        主要的用户交互入口点，支持多种交互模式，包括标准问答、思考过程显示和知识图谱探索。
+        确保在调用完成后恢复原始状态，使用try-finally保证状态一致性。
+        
         参数:
-            query: 用户问题
-            thread_id: 会话ID
-            recursion_limit: 递归限制
-            show_thinking: 是否显示思考过程
-            exploration_mode: 是否使用知识图谱探索模式
+            query: 用户问题字符串
+            thread_id: 会话ID，用于维护对话上下文
+            recursion_limit: 递归限制，防止过度递归
+            show_thinking: 是否显示思考过程，True则返回包含思考步骤的详细结果
+            exploration_mode: 是否使用知识图谱探索模式，启用更深入的知识发现
                 
         返回:
             str: 生成的回答或包含思考过程的字典
         """
-        # 设置是否显示思考过程
+        # 保存原始的思考过程显示状态，用于后续恢复
         old_thinking = self.show_thinking
+        # 设置新的思考过程显示状态
         self.show_thinking = show_thinking
         
         try:
             # 检查是否使用知识图谱探索模式
             if exploration_mode and self.use_deeper_tool:
-                # 知识图谱探索模式
+                # 知识图谱探索模式，使用专门的探索方法
                 return self.explore_knowledge(query, thread_id)
             
-            # 正常模式 - 调用父类方法
+            # 正常模式 - 调用父类方法处理标准查询
             result = super().ask(query, thread_id, recursion_limit)
             return result
         finally:
-            # 重置状态
+            # 重置状态，确保无论执行路径如何都能恢复原始设置
             self.show_thinking = old_thinking
     
     def ask_with_thinking(self, query: str, thread_id: str = "default", community_aware: bool = True):
         """
         提问并返回带思考过程的答案
         
+        专门用于返回详细思考过程的查询方法，支持社区感知搜索增强。
+        当启用社区感知时，会结合社区知识来丰富查询结果。
+        
         参数:
-            query: 用户问题
-            thread_id: 会话ID
-            community_aware: 是否启用社区感知
+            query: 用户问题字符串
+            thread_id: 会话ID，用于维护对话上下文
+            community_aware: 是否启用社区感知，True则结合社区知识增强搜索
             
         返回:
-            dict: 包含思考过程和答案的字典
+            dict: 包含思考过程、答案和可能的社区上下文的完整字典
         """
-        # 如果启用社区感知且工具支持
+        # 如果启用社区感知且工具支持社区增强
         if community_aware and self.community_enhancer:
-            # 提取关键词
+            # 提取关键词，用于优化社区搜索
             keywords = self.research_tool.extract_keywords(query)
             
-            # 使用社区感知增强搜索
+            # 使用社区感知增强搜索，获取相关社区知识
             enhanced_context = self.community_enhancer.enhance_search(query, keywords)
             
-            # 传递增强上下文到思考过程
+            # 执行深度思考过程，处理查询
             result = self.research_tool.thinking(query)
             
-            # 添加社区上下文到结果
+            # 添加社区上下文到结果，丰富最终输出
             if "community_info" in enhanced_context:
                 result["community_context"] = enhanced_context["community_info"]
             
             return result
         else:
-            # 直接调用研究工具的thinking方法
+            # 不使用社区感知，直接调用研究工具的thinking方法
             result = self.research_tool.thinking(query)
             
-            # 确保结果包含执行日志
+            # 确保结果包含执行日志，便于追踪和调试
             if "execution_logs" not in result:
                 result["execution_logs"] = []
                 

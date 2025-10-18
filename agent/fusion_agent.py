@@ -22,21 +22,33 @@ class FusionGraphRAGAgent(BaseAgent):
     
     基于多Agent协作架构的增强型GraphRAGAgent，集成了多种搜索策略和知识融合方法。
     提供图谱感知、社区结构、Chain of Exploration等高级功能，实现更深度的知识检索和推理。
+    
+    主要特性：
+    - 多Agent协作架构，协调多种专用Agent
+    - 支持社区感知的知识检索和探索
+    - 实现矛盾检测和推理链分析
+    - 提供多假设生成和分支分析
+    - 流式输出结果，提升用户体验
+    - 上下文感知的缓存系统
     """
     
     def __init__(self):
-        """初始化Fusion GraphRAG Agent"""
-        # 设置缓存目录
+        """初始化Fusion GraphRAG Agent
+        
+        初始化缓存目录、工具集合并创建Agent协调器。
+        自动尝试加载增强版研究工具，失败时回退到标准版本。
+        """
+        # 设置缓存目录 - 用于存储查询结果和中间状态
         self.cache_dir = "./cache/fusion_graphrag"
 
-        self.use_deeper_tool = True
-        self.has_all_tools = False
-        self.research_tool = DeepResearchTool()
+        self.use_deeper_tool = True    # 是否使用增强版工具
+        self.has_all_tools = False     # 是否成功加载了所有增强工具
+        self.research_tool = DeepResearchTool()  # 初始化默认研究工具
         
-        # 调用父类构造函数
+        # 调用父类构造函数 - 初始化基础功能
         super().__init__(cache_dir=self.cache_dir)
         
-        # 创建协调器
+        # 创建Agent协调器 - 管理多Agent协作流程
         self.coordinator = GraphRAGAgentCoordinator(self.llm)
         
         # 初始化基础搜索工具 - 用于关键词提取
@@ -77,32 +89,40 @@ class FusionGraphRAGAgent(BaseAgent):
         self.show_thinking = False
         
         # 添加查询历史记录，用于跟踪会话上下文
-        self.query_context = {}
+        self.query_context = {}      # 存储会话上下文信息
         
         # 跟踪已探索的查询分支
-        self.explored_branches = {}
+        self.explored_branches = {}  # 存储多假设分析的分支结果
         
         # 矛盾检测结果缓存
-        self.contradiction_cache = {}
+        self.contradiction_cache = {}  # 缓存已检测的矛盾结果
     
     def _setup_tools(self) -> List:
-        """设置工具"""
-        # 创建工具实例
-        self.local_tool = LocalSearchTool()
-        self.global_tool = GlobalSearchTool()
+        """设置和初始化Agent使用的工具集合
         
+        根据当前配置创建和初始化各种搜索和分析工具，
+        自动适配增强版和标准版工具集。
+        
+        返回:
+            List: 工具对象列表，用于LangGraph工作流中
+        """
+        # 创建基础搜索工具实例
+        self.local_tool = LocalSearchTool()    # 本地搜索工具
+        self.global_tool = GlobalSearchTool()  # 全局搜索工具
+        
+        # 初始化工具列表
         tools = [
-            self.local_tool.get_tool(),
-            self.global_tool.get_tool(),
+            self.local_tool.get_tool(),    # 本地搜索工具
+            self.global_tool.get_tool(),   # 全局搜索工具
         ]
         
         # 如果使用深度研究版本，则添加所有增强工具
         if self.use_deeper_tool and self.has_all_tools:
             tools.extend([
-                self.research_tool.get_tool(),  # 基础深度研究工具
-                self.chain_explorer,  # 知识图谱探索工具
-                self.reasoning_analysis_tool,  # 推理链分析工具
-                self.stream_tool,  # 流式处理工具
+                self.research_tool.get_tool(),               # 基础深度研究工具
+                self.chain_explorer,                         # 知识图谱探索工具
+                self.reasoning_analysis_tool,                # 推理链分析工具
+                self.stream_tool,                            # 流式处理工具
             ])
         elif self.use_deeper_tool:
             # 只使用基础深度研究工具
@@ -119,12 +139,27 @@ class FusionGraphRAGAgent(BaseAgent):
         return tools
     
     def _add_retrieval_edges(self, workflow):
-        """添加从检索到生成的边"""
+        """添加从检索到生成的边
+        
+        在LangGraph工作流中设置检索结果到回答生成阶段的转换路径。
+        
+        参数:
+            workflow: LangGraph工作流对象，用于添加边定义
+        """
         # 简单的从检索直接到生成，具体逻辑由协调器处理
         workflow.add_edge("retrieve", "generate")
     
     def _extract_keywords(self, query: str) -> Dict[str, List[str]]:
-        """提取查询关键词"""
+        """提取查询关键词
+        
+        从用户查询中提取关键词，用于优化搜索和知识图谱探索。
+        
+        参数:
+            query: 用户查询字符串
+            
+        返回:
+            Dict: 包含不同级别的关键词列表的字典
+        """
         # 使用搜索工具提取关键词
         return self.search_tool.extract_keywords(query)
     
@@ -132,17 +167,29 @@ class FusionGraphRAGAgent(BaseAgent):
         """
         估计查询复杂度
         
+        使用复杂度评估器分析查询的复杂程度，决定使用哪种处理策略。
+        
         参数:
             query: 查询字符串
             
         返回:
-            float: 复杂度评分 (0.0-1.0)
+            float: 复杂度评分 (0.0-1.0)，越高表示查询越复杂
         """
         # 使用复杂度估计器
         return complexity_estimate(query)
     
     def _generate_node(self, state):
-        """生成回答节点逻辑"""
+        """生成回答节点逻辑
+        
+        LangGraph工作流中的生成节点，负责处理查询并生成最终回答。
+        包含缓存检查、复杂度分析和结果生成等功能。
+        
+        参数:
+            state: 当前工作流状态，包含消息历史和配置信息
+            
+        返回:
+            Dict: 更新后的状态，包含生成的回答消息
+        """
         messages = state["messages"]
         
         # 安全获取问题内容
@@ -178,7 +225,7 @@ class FusionGraphRAGAgent(BaseAgent):
             self.global_cache_manager.set(question, cached_result)
             return {"messages": [{"role": "assistant", "content": cached_result}]}
         
-        # 使用协调器处理
+        # 根据查询复杂度选择不同的处理策略，使用协调器处理
         try:
             start_time = time.time()
             
@@ -260,7 +307,7 @@ class FusionGraphRAGAgent(BaseAgent):
             thread_id: 会话ID
             
         返回:
-            Dict: 增强搜索结果
+            Dict: 增强搜索结果，包含社区感知的知识图谱探索路径
         """
         # 提取查询的关键词
         keywords = self._extract_keywords(query)
@@ -288,7 +335,17 @@ class FusionGraphRAGAgent(BaseAgent):
         return await asyncio.get_event_loop().run_in_executor(None, enhance_wrapper)
     
     async def _async_detect_contradictions(self, query_id):
-        """异步检测矛盾"""
+        """异步检测矛盾信息
+        
+        在检索到的信息中检测潜在的矛盾，使用异步方式执行以提高性能。
+        实现了结果缓存以避免重复计算。
+        
+        参数:
+            query_id: 查询的唯一标识符
+            
+        返回:
+            Dict: 包含矛盾检测结果的数据结构
+        """
         # 检查缓存
         if hasattr(self, '_contradiction_cache') and query_id in self._contradiction_cache:
             return self._contradiction_cache[query_id]
@@ -304,7 +361,18 @@ class FusionGraphRAGAgent(BaseAgent):
         return await asyncio.get_event_loop().run_in_executor(None, detect_wrapper)
     
     async def _stream_process(self, inputs, config):
-        """流式处理过程"""
+        """流式处理查询并生成回答
+        
+        异步方法，支持流式返回回答结果，提升用户体验。
+        实现了缓存检查、复杂度分析、社区感知增强搜索等高级功能。
+        
+        参数:
+            inputs: 包含查询消息的输入数据
+            config: 包含会话ID等配置信息的字典
+            
+        返回:
+            AsyncGenerator: 流式返回处理结果块
+        """
         # 获取查询
         query = inputs["messages"][-1].content if len(inputs["messages"]) > 0 else ""
         if not query:

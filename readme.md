@@ -1,4 +1,4 @@
-# GraphRAG + DeepSearch 实现与问答系统（Agent）构建
+# GraphRAG + DeepSearch 问答系统（Agent）
 
 本项目聚焦于结合 **GraphRAG** 与 **私域深度搜索 Deep Search** 的方式，实现可解释、可推理的智能问答系统，同时结合多 Agent 协作与知识图谱增强，构建完整的 RAG 智能交互解决方案。
 
@@ -571,7 +571,7 @@ DEBUG - LLM关键词结果:
    - 实现资源自动发现与增量爬取
 
 2. **图谱构建优化**：
-   - 采用 GRPO 训练小模型支持图谱抽取
+   - 采用 GRPO（Policy Model + Reference Model + Reward Model）训练小模型支持图谱抽取
    - 降低当前 DeepResearch 进行图谱抽取/Chain of Exploration的成本与延迟
 
 3. **领域特化嵌入**：

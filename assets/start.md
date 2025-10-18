@@ -14,7 +14,10 @@ docker run --name one-api -d --restart always \
 
 在 One-API 控制台中配置第三方 API Key。本项目的所有 API 请求将通过 One-API 转发。
 
-该项目的官方地址：https://github.com/songquanpeng/one-api
+One API 是一个开源的 LLM API 接口调用管理与分发系统
+- 统一API接口，适配成标准的OpenAI API格式
+- 管理与分发，密钥管理，负载均衡，TOKEN 额度控制，模型重定向（权重）
+- 该项目的官方地址：https://github.com/songquanpeng/one-api
 
 具体的填写方式可以看[这里](https://github.com/1517005260/graph-rag-agent/issues/7#issuecomment-2906770240)
 
@@ -44,57 +47,17 @@ cd graph-rag-agent/
 pip install -r requirements.txt
 ```
 
-注意：如需处理 `.doc` 格式（旧版 Word 文件），请根据操作系统安装相应依赖，详见 `requirements.txt` 中注释：
-
-```txt
-# Linux
-sudo apt-get install python-dev-is-python3 libxml2-dev libxslt1-dev antiword unrtf poppler-utils
-
-# Windows
-pywin32>=302
-
-textract==1.6.3  # Windows 无需安装
-```
+注意：如需处理 `.doc` 格式（旧版 Word 文件），请根据操作系统安装相应依赖，详见 `requirements.txt` 中注释（Linux, windows）
 
 ## .env 配置
 
-在项目根目录下创建 `.env` 文件，示例如下：
+在项目根目录下创建 `.env` 文件（拷贝 .env.example 到 .env）
 
-```env
-OPENAI_API_KEY = 'sk-xxx'  # api-key
-OPENAI_BASE_URL = 'http://localhost:13000/v1' # url
+**注意**：全流程测试通过的只有deepseek（20241226版本）以及gpt-4o，剩下的模型，比如：
+- deepseek（20250324版本）幻觉问题比较严重，有概率不遵循提示词，导致抽取实体失败；
+- Qwen的模型可以抽取实体，但是好像不支持langchain/langgraph，所以问答的时候有概率报错，他们有自己的agent实现[Qwen-Agent](https://qwen.readthedocs.io/zh-cn/latest/framework/qwen_agent.html)
 
-OPENAI_EMBEDDINGS_MODEL = 'text-embedding-3-large'  # 向量嵌入模型
-OPENAI_LLM_MODEL = 'gpt-4o'  # 对话模型
-
-TEMPERATURE = 0   # 模型发散度，0-1，越大回答越天马行空
-MAX_TOKENS = 2000  # 最大token
-
-VERBOSE = True  # 调试模式
-
-# neo4j 配置
-NEO4J_URI='neo4j://localhost:7687'
-NEO4J_USERNAME='neo4j'
-NEO4J_PASSWORD='12345678'
-
-# 缓存向量相似度匹配配置
-# 可选值: 'openai' (复用RAG的向量模型), 'sentence_transformer' (使用本地模型)
-CACHE_EMBEDDING_PROVIDER = 'openai'
-# 当使用sentence_transformer时的模型名，模型会缓存到 ./cache/model 目录
-CACHE_SENTENCE_TRANSFORMER_MODEL = 'all-MiniLM-L6-v2'
-# 模型缓存配置
-MODEL_CACHE_ROOT = './cache'  # 缓存根目录，模型会保存到 {MODEL_CACHE_ROOT}/model
-
-# LangSmith 配置（可选，若不需要此监控，可以直接注释）
-LANGSMITH_TRACING=true
-LANGSMITH_ENDPOINT="https://api.smith.langchain.com"
-LANGSMITH_API_KEY="xxx"
-LANGSMITH_PROJECT="xxx"
-```
-
-**注意**：全流程测试通过的只有deepseek（20241226版本）以及gpt-4o，剩下的模型，比如deepseek（20250324版本）幻觉问题比较严重，有概率不遵循提示词，导致抽取实体失败；Qwen的模型可以抽取实体，但是好像不支持langchain/langgraph，所以问答的时候有概率报错，他们有自己的agent实现[Qwen-Agent](https://qwen.readthedocs.io/zh-cn/latest/framework/qwen_agent.html)
-
-## 项目初始化
+## 项目初始化并运行
 
 ```bash
 pip install -e .

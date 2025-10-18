@@ -59,7 +59,8 @@ dataclasses-json
 json_repair
 jsonschema
 
-# linux: sudo apt-get install python-dev-is-python3 libxml2-dev libxslt1-dev antiword unrtf poppler-utils
+# linux
+# sudo apt-get install python-dev-is-python3 libxml2-dev libxslt1-dev antiword unrtf poppler-utils
 textract==1.6.3
 
 # windows
