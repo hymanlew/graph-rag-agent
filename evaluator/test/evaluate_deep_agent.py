@@ -10,7 +10,29 @@ from evaluator.utils.logging_utils import setup_logger
 from evaluator.evaluator_config.agent_evaluation_config import get_agent_metrics
 from evaluator.utils.eval_utils import evaluate_agent, load_questions_and_answers
 
+"""
+Deep Research Agent评估脚本
+
+此脚本专门用于评估系统中Deep Research Agent的性能表现。Deep Research Agent是一种具有
+深度研究和推理能力的智能体，支持标准研究工具和增强版研究工具两种模式。
+
+脚本提供了灵活的评估配置选项，包括：
+- 选择不同的评估类型（全面评估、仅答案质量、仅检索性能、仅推理能力）
+- 自定义评估指标
+- 切换标准/增强版研究工具
+- 详细的日志记录和结果保存
+"""
+
 def parse_args():
+    """
+    解析命令行参数
+    
+    此函数定义了Deep Research Agent评估脚本的所有命令行参数，提供灵活的评估配置选项。
+    参数设计覆盖了评估流程中的关键配置点，包括结果保存、数据源、评估范围和详细程度等。
+    
+    Returns:
+        argparse.Namespace: 包含所有解析后参数的命名空间对象
+    """
     parser = argparse.ArgumentParser(description="评估Deep Research Agent性能")
     parser.add_argument("--save_dir", type=str, default="./evaluation_results/deep_agent",
                         help="评估结果保存目录")
@@ -30,6 +52,21 @@ def parse_args():
     return parser.parse_args()
 
 def main():
+    """
+    主函数：执行Deep Research Agent的评估流程
+    
+    此函数实现了Deep Research Agent评估的完整工作流：
+    1. 解析命令行参数并配置评估环境
+    2. 设置日志系统，记录评估过程
+    3. 根据评估类型和用户输入确定评估指标
+    4. 初始化Deep Research Agent，并配置是否使用增强版工具
+    5. 加载评估数据（问题和标准答案）
+    6. 调用通用评估函数执行评估
+    7. 异常处理确保评估过程的稳定性
+    
+    函数特别处理了不同评估类型的指标选择逻辑，以及标准/增强版工具的配置，
+    并对整个过程进行了详细的日志记录。
+    """
     args = parse_args()
     
     # 设置日志记录
@@ -65,10 +102,11 @@ def main():
             logger.info(f"使用全部评估指标: {', '.join(metrics)}")
     
     try:
-        # 设置是否使用增强版
+        # 初始化Deep Research Agent并配置是否使用增强版工具
         from agent.deep_research_agent import DeepResearchAgent
         agent = DeepResearchAgent()
         
+        # 配置Agent使用标准或增强版研究工具
         if not args.use_deeper:
             agent = agent.is_deeper_tool(False)
             logger.info("使用标准深度研究工具(DeepResearchTool)")
@@ -76,13 +114,13 @@ def main():
             agent = agent.is_deeper_tool(True)
             logger.info("使用增强版深度研究工具(DeeperResearchTool)")
         
-        # 加载问题和答案
+        # 加载问题和标准答案数据
         questions, golden_answers = load_questions_and_answers(
             args.questions_file, 
             args.golden_answers_file
         )
         
-        # 执行评估
+        # 调用通用评估函数执行评估
         evaluate_agent(
             agent_type="deep",
             questions=questions,
@@ -92,9 +130,16 @@ def main():
             verbose=args.verbose
         )
     except Exception as e:
+        # 记录评估过程中的异常
         logger.error(f"评估过程中发生错误: {e}")
         import traceback
         logger.error(traceback.format_exc())
 
 if __name__ == "__main__":
+    """
+    脚本入口点
+    
+    当脚本作为主程序运行时，调用main()函数启动评估流程。
+    这种标准的Python模式确保了当脚本被导入为模块时，不会自动执行评估逻辑。
+    """
     main()

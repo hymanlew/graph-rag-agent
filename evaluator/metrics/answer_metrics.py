@@ -4,25 +4,54 @@ from evaluator.core.base_metric import BaseMetric
 from evaluator.core.evaluation_data import AnswerEvaluationData
 from evaluator.utils.text_utils import normalize_answer
 
+"""
+答案评估指标模块
+
+此模块实现了用于评估GraphRAG系统回答质量的核心指标，包括：
+- ExactMatch（精确匹配）：评估系统回答与标准答案的匹配程度
+- F1Score（F1分数）：评估系统回答的精确率和召回率的综合表现
+
+这些指标采用了混合评分策略，结合规则匹配和LLM评估，以提高评估的准确性和鲁棒性。
+"""
+
 class ExactMatch(BaseMetric):
-    """精确匹配评估指标"""
+    """
+    精确匹配评估指标
     
+    评估系统回答与标准答案的匹配程度，采用混合评分策略：
+    1. 首先进行严格的标准化匹配
+    2. 对于不匹配的情况，计算内容相似度
+    3. 根据相似度高低决定直接评分或使用LLM进行深度评估
+    
+    这种混合方法既保证了评估的客观性，又能处理语言表达的多样性。
+    """
+    
+    # 指标名称，用于在评估系统中唯一标识此指标
     metric_name = "em"
 
     def __init__(self, config):
+        """
+        初始化精确匹配评估器
+        
+        Args:
+            config: 评估配置，包含LLM和其他参数设置
+        """
         super().__init__(config)
+        # 获取可选的LLM实例，用于深度语义评估
         self.llm = config.get("llm", None)
     
     def calculate_em(self, prediction: str, golden_answer: str) -> float:
         """
         计算单个预测的精确匹配得分
         
+        基本的精确匹配计算方法，通过标准化文本后进行严格匹配。
+        
         Args:
-            prediction: 预测答案
-            golden_answer: 标准答案
+            prediction: 预测答案，系统生成的回答
+            golden_answer: 标准答案，期望的正确回答
             
         Returns:
-            float: 得分（1.0表示匹配，0.0表示不匹配）
+            float: 得分（1.0表示完全匹配，0.0表示不匹配）
         """
         if not prediction or not golden_answer:
             return 0.0
@@ -39,30 +68,39 @@ class ExactMatch(BaseMetric):
         """
         计算精确匹配指标 - 使用规则匹配和LLM回退混合评分
         
+        实现了混合评分策略，结合文本标准化、内容相似度计算和LLM语义评估，
+        提高评估的准确性和鲁棒性，特别适合处理自然语言表达多样性的情况。
+        
         Args:
-            data: 评估数据
+            data: 评估数据，包含系统答案和标准答案
             
         Returns:
-            Tuple[Dict[str, float], List[float]]: 总体得分和每个样本的得分
+            Tuple[Dict[str, float], List[float]]: 
+                - 第一个元素：总体平均得分，格式为{"em": 得分}
+                - 第二个元素：每个样本的得分列表
         """
+        # 记录评估过程日志
         self.log("======== ExactMatch 计算日志 ========")
         self.log(f"样本总数: {len(data.samples) if hasattr(data, 'samples') else 0}")
         
         golden_answers = data.golden_answers
         system_answers = data.system_answers
         
+        # 存储每个样本的得分
         metric_score_list = []
         
+        # 遍历所有样本
         for idx, (pred, golden) in enumerate(zip(system_answers, golden_answers)):
             # 预处理系统答案 - 移除Markdown标题和多余空行
             cleaned_pred = re.sub(r'^###.*?\n+', '', pred, flags=re.MULTILINE)
             cleaned_pred = re.sub(r'\n\s*\n', '\n', cleaned_pred)
             cleaned_pred = cleaned_pred.strip()
             
-            # 标准化答案
+            # 标准化答案，去除无关字符和空格，统一大小写等
             normalized_pred = normalize_answer(cleaned_pred)
             normalized_golden = normalize_answer(golden)
             
+            # 记录详细的处理过程
             self.log(f"\n样本 {idx+1}:")
             self.log(f"  标准答案(前30字符): {golden[:30]}...")
             self.log(f"  系统答案(前30字符): {pred[:30]}...")
@@ -70,7 +108,7 @@ class ExactMatch(BaseMetric):
             self.log(f"  标准化后的标准答案(前30字符): {normalized_golden[:30]}...")
             self.log(f"  标准化后的系统答案(前30字符): {normalized_pred[:30]}...")
             
-            # 完全匹配
+            # 完全匹配检查
             if normalized_pred == normalized_golden:
                 score = 1.0
                 self.log(f"  完全匹配 ✓")
@@ -79,9 +117,10 @@ class ExactMatch(BaseMetric):
                 similarity_score = self._calculate_content_similarity(cleaned_pred, golden)
                 self.log(f"  基本内容相似度: {similarity_score:.4f}")
                 
-                # 如果内容相似度较高，给予一定分数
+                # 如果内容相似度较高，给予较高分数
                 if similarity_score >= 0.7:
-                    score = 0.7 + (similarity_score - 0.7) * 3/3  # 0.7-1.0 映射到 0.7-1.0
+                    # 线性映射相似度到0.7-1.0范围
+                    score = 0.7 + (similarity_score - 0.7) * 3/3
                     self.log(f"  内容高度相似，给予分数: {score:.4f}")
                 # 如果内容相似度一般，回退到LLM评分
                 elif self.llm:
@@ -106,13 +145,17 @@ class ExactMatch(BaseMetric):
                     score = self.get_llm_fallback_score(prompt, default_score=similarity_score)
                     self.log(f"  LLM评估的匹配度分数: {score:.4f}")
                 else:
-                    # 没有LLM，使用内容相似度作为分数
+                    # 没有LLM，直接使用内容相似度作为分数
                     score = similarity_score
                     self.log(f"  使用内容相似度作为分数: {score:.4f}")
             
+            # 保存样本得分
             metric_score_list.append(score)
         
+        # 计算总体平均得分
         em_score = sum(metric_score_list) / len(metric_score_list) if metric_score_list else 0.0
+        
+        # 记录评估结果统计信息
         self.log(f"\n样本总数: {len(metric_score_list)}")
         self.log(f"匹配样本数: {sum(1 for s in metric_score_list if s > 0.8)}")
         self.log(f"精确匹配平均得分: {em_score:.4f}")
@@ -124,17 +167,21 @@ class ExactMatch(BaseMetric):
         """
         计算两个文本的内容相似度
         
+        使用Jaccard相似度和词覆盖率的加权组合来评估文本内容的相似性，
+        特别适合处理自然语言答案中关键词匹配的情况。
+        
         Args:
-            pred: 预测答案
-            golden: 标准答案
+            pred: 预测答案，系统生成的回答
+            golden: 标准答案，期望的正确回答
             
         Returns:
-            float: 内容相似度分数 (0-1)
+            float: 内容相似度分数 (0-1)，值越大表示相似度越高
         """
-        # 标准化处理
+        # 标准化处理，移除标点符号、停用词等
         pred_norm = normalize_answer(pred).split()
         golden_norm = normalize_answer(golden).split()
         
+        # 处理空文本情况
         if not pred_norm or not golden_norm:
             return 0.0
             
@@ -148,7 +195,8 @@ class ExactMatch(BaseMetric):
         else:
             jaccard = 0.0
             
-        # 计算词覆盖率
+        # 计算词覆盖率：评估预测文本覆盖标准答案关键词的程度
+        # 和标准答案覆盖预测文本关键词的程度
         pred_coverage = len(common_words) / len(set(pred_norm)) if pred_norm else 0
         golden_coverage = len(common_words) / len(set(golden_norm)) if golden_norm else 0
         
@@ -158,42 +206,69 @@ class ExactMatch(BaseMetric):
         return similarity
 
 class F1Score(BaseMetric):
-    """F1分数评估指标"""
+    """
+    F1分数评估指标
     
+    评估系统回答的精确率和召回率的综合表现，采用混合评分策略：
+    1. 首先使用jieba分词器进行中文分词
+    2. 计算标准F1分数（2*精确率*召回率/(精确率+召回率)）
+    3. 如果有LLM，进行深度语义评估，选择最高分作为最终结果
+    
+    这种方法平衡了关键词匹配的精确性和语义理解的深度，
+    特别适合评估中文自然语言答案的质量。
+    """
+    
+    # 指标名称，用于在评估系统中唯一标识此指标
     metric_name = "f1"
 
     def __init__(self, config):
+        """
+        初始化F1分数评估器
+        
+        Args:
+            config: 评估配置，包含LLM和其他参数设置
+        """
         super().__init__(config)
+        # 获取可选的LLM实例，用于深度语义评估
         self.llm = config.get("llm", None)
     
     def calculate_metric(self, data: AnswerEvaluationData) -> Tuple[Dict[str, float], List[float]]:
         """
         计算F1分数 - 使用规则匹配和LLM回退混合评分
         
+        实现了基于分词的F1计算和LLM语义评估的混合方法，
+        特别优化了中文文本处理，包括分词和停用词过滤，以提高评估准确性。
+        
         Args:
-            data: 评估数据
+            data: 评估数据，包含系统答案和标准答案
             
         Returns:
-            Tuple[Dict[str, float], List[float]]: 总体得分和每个样本的得分
+            Tuple[Dict[str, float], List[float]]: 
+                - 第一个元素：总体平均得分，格式为{"f1": 得分}
+                - 第二个元素：每个样本的得分列表
         """
+        # 记录评估过程日志
         self.log("\n======== F1Score 计算日志 ========")
         self.log(f"样本总数: {len(data.samples) if hasattr(data, 'samples') else 0}")
         
         golden_answers = data.golden_answers
         system_answers = data.system_answers
         
+        # 存储每个样本的F1得分
         f1_scores = []
         
+        # 遍历所有样本
         for idx, (pred, golden) in enumerate(zip(system_answers, golden_answers)):
             # 预处理系统答案 - 移除Markdown标题和多余空行
             cleaned_pred = re.sub(r'^###.*?\n+', '', pred, flags=re.MULTILINE)
             cleaned_pred = re.sub(r'\n\s*\n', '\n', cleaned_pred)
             cleaned_pred = cleaned_pred.strip()
             
-            # 将文本标准化
+            # 将文本标准化，去除无关字符
             pred_text = normalize_answer(cleaned_pred)
             golden_text = normalize_answer(golden)
             
+            # 记录处理过程
             self.log(f"\n样本 {idx+1}:")
             self.log(f"  标准答案(前30字符): {golden[:30]}...")
             self.log(f"  系统答案(前30字符): {pred[:30]}...")
@@ -205,14 +280,16 @@ class F1Score(BaseMetric):
                 pred_tokens = list(jieba.cut(pred_text))
                 golden_tokens = list(jieba.cut(golden_text))
                 
-                # 过滤停用词和过短的词
+                # 过滤停用词和过短的词，提高评估准确性
                 stopwords = {'的', '了', '和', '在', '是', '为', '以', '与', '或', '且'}
                 pred_tokens = [token for token in pred_tokens if len(token) > 1 and token not in stopwords]
                 golden_tokens = [token for token in golden_tokens if len(token) > 1 and token not in stopwords]
                 
+                # 记录分词信息
                 self.log(f"  标准答案分词数: {len(golden_tokens)}")
                 self.log(f"  系统答案分词数: {len(pred_tokens)}")
                 
+                # 处理空文本情况
                 if not pred_tokens or not golden_tokens:
                     # 空文本处理
                     if not pred_tokens and not golden_tokens:
@@ -222,21 +299,27 @@ class F1Score(BaseMetric):
                         rule_f1 = 0.0  # 一个为空一个不为空
                         self.log(f"  一个为空一个不为空，规则F1=0.0")
                 else:
-                    # 计算标准F1
+                    # 计算标准F1分数
+                    # 找出共同词
                     common_tokens = set(pred_tokens) & set(golden_tokens)
+                    # 计算精确率：正确识别的词占预测词的比例
                     precision = len(common_tokens) / len(pred_tokens) if pred_tokens else 0
+                    # 计算召回率：正确识别的词占标准答案词的比例
                     recall = len(common_tokens) / len(golden_tokens) if golden_tokens else 0
                     
+                    # 计算F1分数：精确率和召回率的调和平均
                     if precision + recall > 0:
                         rule_f1 = 2 * precision * recall / (precision + recall)
                     else:
                         rule_f1 = 0.0
                     
+                    # 记录详细计算信息
                     self.log(f"  共有词汇: {len(common_tokens)}/{len(set(pred_tokens) | set(golden_tokens))}")
                     self.log(f"  精确率: {precision:.4f}")
                     self.log(f"  召回率: {recall:.4f}")
                     self.log(f"  规则F1分数: {rule_f1:.4f}")
             except Exception as e:
+                # 处理可能的异常，如分词失败
                 self.log(f"  规则F1计算出错: {e}")
                 rule_f1 = 0.0
             
@@ -263,7 +346,7 @@ class F1Score(BaseMetric):
                 llm_f1 = self.get_llm_fallback_score(prompt, default_score=0.5)
                 self.log(f"  LLM评估的F1分数: {llm_f1:.4f}")
                 
-                # 如果LLM分数更高，使用LLM分数；否则使用规则F1分数
+                # 选择规则评分和LLM评分中的较高者作为最终得分
                 if llm_f1 > rule_f1:
                     self.log(f"  LLM分数更高，采用LLM评估")
                     f1 = llm_f1
@@ -274,10 +357,13 @@ class F1Score(BaseMetric):
                 # 没有LLM可用，使用规则F1分数
                 f1 = rule_f1
             
+            # 保存样本得分
             f1_scores.append(f1)
         
+        # 计算总体平均得分
         avg_f1 = sum(f1_scores) / len(f1_scores) if f1_scores else 0.0
         
+        # 记录评估结果统计信息
         self.log(f"\n样本总数: {len(f1_scores)}")
         self.log(f"F1得分大于0.5的样本数: {sum(1 for s in f1_scores if s > 0.5)}")
         self.log(f"F1平均得分: {avg_f1:.4f}")

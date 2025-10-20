@@ -9,8 +9,36 @@ from evaluator.evaluator_config.evaluatorConfig import EvaluatorConfig
 from evaluator.evaluators.composite_evaluator import CompositeGraphRAGEvaluator
 from evaluator.evaluator_config.agent_evaluation_config import get_agent_metrics
 
+"""
+评估工具函数模块
+
+此模块提供了GraphRAG系统评估过程中常用的工具函数，主要功能包括：
+- 动态加载不同类型的Agent实例
+- 加载评估所需的外部依赖（Neo4j数据库和LLM模型）
+- 执行单一Agent的完整评估流程
+- 加载和处理问题与标准答案数据
+
+这些函数为评估脚本提供了核心支持，简化了评估过程的配置和执行。
+"""
+
 def load_agent(agent_type: str):
-    """加载指定类型的Agent"""
+    """
+    动态加载指定类型的Agent实例
+    
+    此函数实现了根据Agent类型名称自动导入并实例化对应的Agent类。
+    支持加载系统中所有预定义的Agent类型，包括graph、hybrid、naive、fusion和deep。
+    对于deep类型的Agent，会优先尝试加载增强版，失败时回退到标准版。
+    
+    Args:
+        agent_type: Agent类型字符串，如"graph"、"hybrid"、"naive"、"fusion"或"deep"
+        
+    Returns:
+        Agent实例: 对应类型的Agent对象
+        
+    Raises:
+        ValueError: 当指定了不支持的Agent类型时
+        ImportError: 当Agent类无法导入时
+    """
     try:
         if agent_type == "graph":
             from agent.graph_agent import GraphAgent
@@ -40,7 +68,20 @@ def load_agent(agent_type: str):
         raise ImportError(f"无法导入{agent_type}Agent: {e}")
 
 def load_dependencies():
-    """加载Neo4j和LLM依赖"""
+    """
+    加载评估所需的外部依赖
+    
+    此函数负责加载评估过程中需要的关键外部依赖：
+    1. Neo4j数据库连接：用于图数据库相关的评估指标计算
+    2. LLM模型：用于基于语言模型的评估指标计算
+    
+    采用容错设计，即使某些依赖无法加载也不会中断整个评估流程，
+    只会打印警告信息并继续执行（可能导致部分依赖该组件的指标无法计算）。
+    
+    Returns:
+        Tuple[neo4j_driver, llm_model]: Neo4j数据库驱动和LLM模型实例的元组
+        如果加载失败，对应位置返回None
+    """
     neo4j = None
     llm = None
     
@@ -69,18 +110,23 @@ def evaluate_agent(
     verbose: bool = False
 ) -> Dict[str, float]:
     """
-    评估指定类型的Agent
+    执行单个Agent的完整评估流程
+    
+    此函数封装了对指定类型Agent的全面评估过程，包括环境配置、Agent加载、
+    评估执行和结果保存。支持两种评估模式：
+    1. 使用标准答案的质量评估
+    2. 仅评估检索性能
     
     Args:
-        agent_type: Agent类型
-        questions: 问题列表
-        golden_answers: 标准答案列表（可选）
-        save_dir: 保存目录
-        metrics: 评估指标（如果为None，则使用默认指标）
-        verbose: 是否打印详细日志
+        agent_type: 要评估的Agent类型
+        questions: 评估用的问题列表
+        golden_answers: 对应的标准答案列表（可选）
+        save_dir: 评估结果保存目录
+        metrics: 要使用的评估指标列表，如果为None则使用默认指标
+        verbose: 是否打印详细评估日志
         
     Returns:
-        Dict[str, float]: 评估结果
+        Dict[str, float]: 评估结果字典，键为指标名称，值为评分
     """
     # 设置保存目录
     agent_save_dir = os.path.join(save_dir, agent_type)
@@ -178,14 +224,20 @@ def evaluate_agent(
 
 def load_questions_and_answers(questions_file: str, golden_answers_file: Optional[str] = None) -> Tuple[List[str], Optional[List[str]]]:
     """
-    加载问题和答案文件
+    加载评估用的问题和答案文件
+    
+    此函数用于加载评估过程中需要的问题和标准答案数据。
+    支持从JSON文件加载数据，并确保问题和答案的数量匹配。
+    如果数量不匹配，会自动截断到较少的数量，确保一一对应。
     
     Args:
-        questions_file: 问题文件路径
-        golden_answers_file: 标准答案文件路径（可选）
+        questions_file: 问题文件路径，JSON格式
+        golden_answers_file: 标准答案文件路径，JSON格式（可选）
         
     Returns:
-        Tuple[List[str], Optional[List[str]]]: 问题列表和答案列表（如果提供）
+        Tuple[List[str], Optional[List[str]]]: 
+            - 问题列表
+            - 标准答案列表（如果提供），否则为None
     """
     evaluator = CompositeGraphRAGEvaluator()
     

@@ -15,7 +15,29 @@ from evaluator.evaluators.composite_evaluator import CompositeGraphRAGEvaluator
 from evaluator.evaluator_config.agent_evaluation_config import get_agent_metrics
 from evaluator.utils.eval_utils import load_agent, load_dependencies, load_questions_and_answers
 
+"""
+多Agent评估比较脚本
+
+此脚本用于对GraphRAG系统中的多个Agent进行综合评估和性能比较，支持以下功能：
+- 批量评估不同类型的Agent（graph, hybrid, naive, fusion, deep等）
+- 灵活配置评估指标和评估类型（全面评估、仅答案质量、仅检索性能）
+- 支持使用标准答案进行质量评估和比较
+- 生成详细的评估日志和性能对比报告
+- 支持自定义评估参数和增强版Agent配置
+
+评估结果将以JSON格式保存，并生成Markdown对比表格便于分析。
+"""
+
 def parse_args():
+    """
+    解析命令行参数
+    
+    设置评估脚本所需的所有配置参数，包括评估结果保存路径、问题文件、
+    标准答案文件、评估指标、Agent类型等。支持灵活的评估配置，满足不同评估场景需求。
+    
+    Returns:
+        argparse.Namespace: 包含所有命令行参数的命名空间对象
+    """
     parser = argparse.ArgumentParser(description="评估并比较所有Agent性能")
     parser.add_argument("--save_dir", type=str, default="./evaluation_results/comparison",
                         help="评估结果保存目录")
@@ -39,7 +61,20 @@ def parse_args():
     return parser.parse_args()
 
 def get_common_metrics(agent_types: List[str], metric_type: str = None) -> List[str]:
-    """获取所有指定Agent类型共有的评估指标"""
+    """
+    获取所有指定Agent类型共有的评估指标
+    
+    为了公平比较不同Agent的性能，需要找到所有Agent都支持的评估指标。
+    此函数通过计算多个Agent支持的评估指标的交集，确保比较的公平性和一致性。
+    如果没有共有指标，则返回所有收集到的指标的并集。
+    
+    Args:
+        agent_types: 要比较的Agent类型列表
+        metric_type: 可选的指标类型过滤（answer或retrieval）
+        
+    Returns:
+        List[str]: 所有Agent共有的评估指标列表
+    """
     all_metrics = set()
     common_metrics = None
     
@@ -61,6 +96,22 @@ def get_common_metrics(agent_types: List[str], metric_type: str = None) -> List[
     return list(common_metrics)
 
 def main():
+    """
+    主函数：执行多Agent评估和比较的完整流程
+    
+    实现了多Agent评估的完整工作流：
+    1. 解析命令行参数并配置评估环境
+    2. 设置日志系统，记录评估过程和结果
+    3. 加载依赖组件（Neo4j客户端和LLM模型）
+    4. 加载问题和标准答案（如果有）
+    5. 初始化需要评估的各种Agent
+    6. 配置并创建复合评估器
+    7. 根据是否有标准答案选择合适的评估方法
+    8. 执行评估并获取各Agent的性能指标
+    9. 保存评估结果和对比报告
+    
+    整个流程设计考虑了错误处理和日志记录，确保评估过程的稳定性和可追踪性。
+    """
     args = parse_args()
     
     # 设置保存目录
@@ -208,4 +259,10 @@ def main():
                 logger.warning(f"关闭{agent_type}Agent时出错: {e}")
 
 if __name__ == "__main__":
+    """
+    脚本入口点
+
+    当脚本作为主程序运行时执行评估流程，支持命令行调用和参数配置。
+    这样设计允许脚本被直接运行，也可以作为模块被导入使用。
+    """
     main()

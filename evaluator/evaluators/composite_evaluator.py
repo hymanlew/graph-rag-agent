@@ -13,17 +13,37 @@ from evaluator.preprocessing.text_cleaner import clean_references, clean_thinkin
 from evaluator.preprocessing.reference_extractor import extract_references_from_answer
 from evaluator.evaluator_config.evaluatorConfig import EvaluatorConfig
 
+"""
+复合评估器模块
+
+此模块实现了CompositeGraphRAGEvaluator类，用于同时评估GraphRAG系统中
+不同Agent的答案质量和检索性能。它整合了AnswerEvaluator和GraphRAGRetrievalEvaluator，
+提供了全面的评估功能，包括单一Agent评估、多Agent比较、答案保存和结果格式化等。
+"""
+
 class CompositeGraphRAGEvaluator:
     """
-    组合评估器，同时评估答案质量和检索性能
+    复合图RAG评估器类
+    
+    整合了答案评估和检索评估的功能，能够同时评估Agent的答案质量和检索性能。
+    支持多种评估模式：使用标准答案的评估、仅检索评估、多Agent比较等。
+    同时提供了结果保存和格式化输出的功能。
     """
     
     def __init__(self, config: Dict[str, Any] = None):
         """
-        初始化组合评估器
+        初始化复合评估器
         
         Args:
-            config: 评估配置
+            config: 评估配置，可以是字典或EvaluatorConfig对象
+            
+        初始化过程：
+        1. 处理配置参数，创建EvaluatorConfig对象
+        2. 设置保存目录和调试模式
+        3. 创建答案评估器实例，配置答案质量相关指标
+        4. 创建检索评估器实例，配置检索性能相关指标
+        5. 获取并存储各类型Agent实例
+        6. 创建回答保存目录
         """
         # 支持字典或EvaluatorConfig对象
         if isinstance(config, dict):
@@ -31,7 +51,9 @@ class CompositeGraphRAGEvaluator:
         else:
             self.config = config or EvaluatorConfig()
             
+        # 评估结果保存目录
         self.save_dir = self.config.get('save_dir', './evaluation_results')
+        # 调试模式开关
         self.debug = self.config.get('debug', True)
         
         # 确保保存目录存在
@@ -89,7 +111,7 @@ class CompositeGraphRAGEvaluator:
                                   m in ['entity_coverage', 'graph_coverage', 
                                        'relationship_utilization', 'community_relevance', 
                                        'subgraph_quality']]
-                                  
+                                      
         # 如果没有传入检索指标，使用默认指标
         if not passed_retrieval_metrics:
             passed_retrieval_metrics = default_retrieval_metrics
@@ -97,7 +119,7 @@ class CompositeGraphRAGEvaluator:
         retrieval_config['metrics'] = passed_retrieval_metrics
         self.retrieval_evaluator = GraphRAGRetrievalEvaluator(retrieval_config)
         
-        # Agent实例
+        # Agent实例字典，存储不同类型的Agent
         self.agents = {
             "naive": self.config.get_agent("naive"),
             "hybrid": self.config.get_agent("hybrid"),
@@ -115,8 +137,10 @@ class CompositeGraphRAGEvaluator:
         输出调试日志
         
         Args:
-            message: 日志消息
-            *args, **kwargs: 额外参数
+            message: 日志消息内容
+            *args, **kwargs: 额外的日志参数
+            
+        当调试模式开启时，将消息输出到控制台，前缀为[CompositeEvaluator]标识。
         """
         from evaluator import debug_print
         if self.debug:
@@ -124,7 +148,10 @@ class CompositeGraphRAGEvaluator:
             
     def evaluate_with_golden_answers(self, agent_name: str, questions: List[str], golden_answers: List[str]) -> Dict[str, float]:
         """
-        使用标准答案评估特定Agent
+        使用标准答案评估特定Agent的性能
+        
+        同时评估Agent的答案质量和检索性能，基于提供的问题和标准答案。
+        为每个问题创建评估样本，获取Agent回答，然后使用答案评估器和检索评估器计算各项指标。
         
         Args:
             agent_name: Agent名称
@@ -132,7 +159,10 @@ class CompositeGraphRAGEvaluator:
             golden_answers: 标准答案列表
                 
         Returns:
-            Dict[str, float]: 评估结果
+            Dict[str, float]: 合并后的评估结果字典，包含答案质量和检索性能指标
+            
+        Raises:
+            ValueError: 当问题和标准答案数量不匹配，或未找到指定的Agent时
         """
         if len(questions) != len(golden_answers):
             raise ValueError("问题和标准答案数量不匹配")
@@ -205,6 +235,7 @@ class CompositeGraphRAGEvaluator:
                 neo4j_client = self.config.get('neo4j_client')
                 if neo4j_client:
                     try:
+                        # 从问题中获取相关的实体和关系数据
                         entities, relationships = self.retrieval_evaluator._get_relevant_graph_data(question)
                         retrieval_sample.update_retrieval_data(entities, relationships)
                     except Exception as e:
@@ -263,23 +294,31 @@ class CompositeGraphRAGEvaluator:
     
     def compare_agents_with_golden_answers(self, questions: List[str], golden_answers: List[str]) -> Dict[str, Dict[str, float]]:
         """
-        使用标准答案比较所有Agent
+        使用标准答案比较多个Agent的性能
+        
+        对配置中的所有可用Agent进行评估和比较，基于提供的问题和标准答案。
+        为每个Agent生成独立的评估结果，并将所有结果合并为一个比较字典。
         
         Args:
             questions: 问题列表
             golden_answers: 标准答案列表
             
         Returns:
-            Dict[str, Dict[str, float]]: 每个Agent的评估结果
+            Dict[str, Dict[str, float]]: 每个Agent的评估结果字典，外层键为Agent名称
+            
+        Raises:
+            ValueError: 当问题和标准答案数量不匹配时
         """
         if len(questions) != len(golden_answers):
             raise ValueError("问题和标准答案数量不匹配")
         
         results = {}
         
+        # 遍历所有可用的Agent
         for agent_name, agent in self.agents.items():
             if agent:
                 self.log(f"评估Agent: {agent_name}")
+                # 评估当前Agent
                 agent_results = self.evaluate_with_golden_answers(agent_name, questions, golden_answers)
                 results[agent_name] = agent_results
                 
@@ -300,12 +339,18 @@ class CompositeGraphRAGEvaluator:
         """
         仅评估检索性能
         
+        专注于评估Agent的检索性能，不进行答案质量评估。
+        为每个问题创建检索评估样本，获取Agent回答，然后使用检索评估器计算各项检索指标。
+        
         Args:
             agent_name: Agent名称
             questions: 问题列表
             
         Returns:
-            Dict[str, float]: 评估结果
+            Dict[str, float]: 检索评估结果字典
+            
+        Raises:
+            ValueError: 当未找到指定的Agent时
         """
         agent = self.agents.get(agent_name)
         if not agent:
@@ -330,7 +375,7 @@ class CompositeGraphRAGEvaluator:
             start_time = time.time()
             
             try:
-                # 获取回答 - 直接询问Agent一次
+                # 获取回答
                 answer = agent.ask(question)
                 
                 # 计算检索时间
@@ -356,6 +401,7 @@ class CompositeGraphRAGEvaluator:
                 neo4j_client = self.config.get('neo4j_client')
                 if neo4j_client:
                     try:
+                        # 从问题中获取相关的实体和关系数据
                         entities, relationships = self.retrieval_evaluator._get_relevant_graph_data(question)
                         retrieval_sample.update_retrieval_data(entities, relationships)
                     except Exception as e:
@@ -399,17 +445,22 @@ class CompositeGraphRAGEvaluator:
         """
         仅比较检索性能
         
+        对配置中的所有可用Agent进行检索性能评估和比较。
+        为每个Agent生成独立的检索评估结果，并将所有结果合并为一个比较字典。
+        
         Args:
             questions: 问题列表
             
         Returns:
-            Dict[str, Dict[str, float]]: 每个Agent的评估结果
+            Dict[str, Dict[str, float]]: 每个Agent的检索评估结果字典，外层键为Agent名称
         """
         results = {}
         
+        # 遍历所有可用的Agent
         for agent_name, agent in self.agents.items():
             if agent:
                 self.log(f"评估Agent: {agent_name}")
+                # 评估当前Agent的检索性能
                 agent_results = self.evaluate_retrieval_only(agent_name, questions)
                 results[agent_name] = agent_results
                 
@@ -430,9 +481,12 @@ class CompositeGraphRAGEvaluator:
         """
         保存Agent回答
         
+        将Agent的回答保存为JSON和Markdown两种格式，便于后续查看和分析。
+        JSON格式便于程序处理，Markdown格式便于人工阅读。
+        
         Args:
             agent_name: Agent名称
-            answers: 回答列表
+            answers: 回答列表，每个元素包含问题和回答
         """
         # 确保答案目录存在
         os.makedirs(self.answers_dir, exist_ok=True)
@@ -456,13 +510,16 @@ class CompositeGraphRAGEvaluator:
     
     def format_comparison_table(self, results: Dict[str, Dict[str, float]]) -> str:
         """
-        将比较结果格式化为表格
+        将比较结果格式化为Markdown表格
+        
+        将不同Agent的评估结果组织成结构化的Markdown表格，
+        按照答案质量指标、LLM评估指标和检索性能指标分类显示。
         
         Args:
-            results: 比较结果
+            results: 比较结果，外层键为Agent名称，内层为指标和得分
             
         Returns:
-            str: 表格字符串
+            str: 格式化的Markdown表格字符串
         """
         # 获取所有指标
         all_metrics = set()
@@ -545,7 +602,10 @@ class CompositeGraphRAGEvaluator:
     
     def save_agent_answers(self, questions: List[str], output_dir: str = None):
         """
-        保存Agent回答
+        批量保存所有Agent的回答
+        
+        为配置中的所有可用Agent生成回答并保存，避免重复生成已存在的回答。
+        支持缓存机制，避免重复处理相同的问题。
         
         Args:
             questions: 问题列表
@@ -619,11 +679,16 @@ class CompositeGraphRAGEvaluator:
         """
         从文件加载问题列表，支持多种格式
         
+        从JSON格式的文件中读取问题数据，支持多种数据结构：
+        - 直接的问题列表
+        - 字典列表，包含question、text等字段
+        - 其他可能的结构，尝试智能提取问题内容
+        
         Args:
             file_path: 问题文件路径（JSON格式）
             
         Returns:
-            List[str]: 问题列表
+            List[str]: 提取的问题列表
         """
         with open(file_path, "r", encoding="utf-8") as f:
             questions_data = json.load(f)
@@ -663,11 +728,16 @@ class CompositeGraphRAGEvaluator:
         """
         从文件加载答案列表，支持多种格式
         
+        从JSON格式的文件中读取答案数据，支持多种数据结构：
+        - 直接的答案列表
+        - 字典列表，包含answer、text等字段
+        - 其他可能的结构，尝试智能提取答案内容
+        
         Args:
             file_path: 答案文件路径（JSON格式）
             
         Returns:
-            List[str]: 答案列表
+            List[str]: 提取的答案列表
         """
         with open(file_path, "r", encoding="utf-8") as f:
             answers_data = json.load(f)

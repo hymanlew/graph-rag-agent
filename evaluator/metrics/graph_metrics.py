@@ -3,17 +3,64 @@ from typing import Dict, List, Tuple, Set, Any
 from evaluator.core.base_metric import BaseMetric
 from evaluator.utils.text_utils import normalize_answer
 
+"""
+图数据评估指标模块
+
+此模块实现了用于评估GraphRAG系统中图数据相关性能的核心指标，包括：
+- CommunityRelevanceMetric（社区相关性）：评估系统利用知识社区的相关性和准确性
+
+这些指标专注于评估GraphRAG系统与图数据库交互的效率和质量，
+通过分析实体引用、社区关联和图数据利用情况，提供对系统整体图数据利用能力的全面评价。
+"""
+
 class CommunityRelevanceMetric(BaseMetric):
-    """社区相关性评估指标"""
+    """
+    社区相关性评估指标
     
+    评估GraphRAG系统利用知识社区的相关性、准确性和有效性。
+    采用多层次评估策略：
+    1. 分析问题关键词与社区内容的匹配程度
+    2. 考虑不同Agent类型的社区利用特点
+    3. 提供基于Neo4j图数据库的社区信息查询
+    4. 对低分数样本使用LLM进行深度语义评估
+    
+    此指标特别适合评估GraphRAG系统对知识社区的利用效率，
+    能够有效识别系统是否恰当选择并利用了相关知识社区。
+    """
+    
+    # 指标名称，用于在评估系统中唯一标识此指标
     metric_name = "community_relevance"
     
     def __init__(self, config):
+        """
+        初始化社区相关性评估器
+        
+        Args:
+            config: 评估配置，包含Neo4j客户端和LLM实例等参数
+        """
         super().__init__(config)
+        # 获取Neo4j客户端实例，用于查询图数据库中的社区信息
         self.neo4j_client = config.get('neo4j_client', None)
     
     def calculate_metric(self, data) -> Tuple[Dict[str, float], List[float]]:
-        """计算社区相关性"""
+        """
+        计算社区相关性得分 - 结合关键词匹配和Agent类型分析
+        
+        实现了一个智能的社区相关性评估流程：
+        1. 提取问题关键词和Agent类型信息
+        2. 根据不同Agent类型采用不同的评估策略
+        3. 查询Neo4j图数据库获取社区信息
+        4. 计算关键词与社区内容的匹配度
+        5. 提供LLM回退机制用于深度语义评估
+        
+        Args:
+            data: 评估数据，包含问题、Agent类型、回答和引用实体
+            
+        Returns:
+            Tuple[Dict[str, float], List[float]]: 
+                - 第一个元素：总体平均得分，格式为{"community_relevance": 得分}
+                - 第二个元素：每个样本的相关性得分列表
+        """
         self.log("\n======== CommunityRelevance 计算日志 ========")
         
         relevance_scores = []
@@ -196,14 +243,24 @@ class CommunityRelevanceMetric(BaseMetric):
     
     def _llm_fallback_for_community(self, sample, keywords: List[str]) -> float:
         """
-        使用LLM评估社区相关性
+        使用LLM进行社区相关性的深度语义评估
+        
+        当规则匹配分数较低时，此方法提供基于LLM的深度语义评估作为回退方案，
+        利用LLM的理解能力评估问题与社区内容的语义相关性，而不仅是关键词匹配。
+        
+        这种深度评估方法能够捕捉：
+        - 问题与知识社区内容的语义相似性
+        - 回答对社区核心概念的利用程度
+        - 领域知识的相关性和适当性
+        
+        该方法特别适合那些关键词匹配难以准确评估的复杂问题场景。
         
         Args:
-            sample: 评估样本
-            keywords: 问题关键词
+            sample: 评估样本，包含问题、Agent类型、回答等信息
+            keywords: 从问题中提取的关键词列表
             
         Returns:
-            float: LLM评估的社区相关性分数
+            float: LLM评估的社区相关性得分，范围0-1
         """
         question = sample.question
         answer = sample.system_answer
@@ -241,7 +298,17 @@ class CommunityRelevanceMetric(BaseMetric):
 
 class SubgraphQualityMetric(BaseMetric):
     """
-    评估检索到的子图的质量和信息密度
+    子图质量评估指标
+    
+    全面评估GraphRAG系统检索到的子图的结构质量、信息密度和连通性。
+    该指标从多个维度分析图结构的有效性：
+    - 图密度：评估实体间关系的丰富程度
+    - 连通性：分析实体间的连接程度和完整性
+    - 结构复杂性：识别图的复杂程度和信息价值
+    - 关系质量：评估关系描述的详细程度
+    
+    采用加权评分策略，综合考虑密度和连通性，为不同Agent类型提供相应的评分调整。
+    当规则评分较低时，还能通过LLM进行深度语义评估作为回退方案。
     """
     
     metric_name = "subgraph_quality"
@@ -442,7 +509,25 @@ class SubgraphQualityMetric(BaseMetric):
         return self.get_llm_fallback_score(prompt, default_score=0.4)
     
     def _get_processed_relationships(self, relationships) -> List[Tuple[str, str, str]]:
-        """处理关系数据，获取标准化的三元组列表"""
+        """
+        处理关系数据，获取标准化的三元组列表
+        
+        实现了一个灵活的关系数据处理机制，能够处理多种格式的关系输入：
+        1. 字符串ID格式的关系
+        2. 三元组(tuple/list)格式的关系
+        3. 字典格式的关系
+        
+        对于字符串ID格式的关系，还会尝试从Neo4j数据库中查询实际的关系信息，
+        如果无法找到匹配的关系，则创建占位关系以保持评估流程正常进行。
+        
+        这种多格式支持的设计使评估系统能够适应不同组件输出的多样化关系表示。
+        
+        Args:
+            relationships: 关系数据，可以是多种格式的列表
+            
+        Returns:
+            List[Tuple[str, str, str]]: 标准化的关系三元组列表 (源实体, 关系类型, 目标实体)
+        """
         processed_relationships = []
         
         # 如果关系不是列表，直接返回空列表
@@ -560,7 +645,24 @@ class SubgraphQualityMetric(BaseMetric):
         return processed_relationships
     
     def _get_relationships_from_ids(self, rel_ids: List[str]) -> List[Tuple[str, str, str]]:
-        """从关系ID获取关系信息"""
+        """
+        从关系ID获取关系详细信息
+        
+        实现了一个多策略的关系信息获取机制：
+        1. 首先将字符串ID转换为数字ID进行规范化处理
+        2. 尝试使用标准查询获取关系的源实体、关系类型和目标实体
+        3. 如果第一种方法失败，尝试使用备用查询策略
+        4. 如果仍未找到关系，创建占位关系以保证评估流程正常进行
+        
+        该方法对GraphRAG系统至关重要，因为它能够将系统引用的关系ID转换为有意义的
+        三元组表示，从而进行有效的图结构评估。
+        
+        Args:
+            rel_ids: 关系ID列表
+            
+        Returns:
+            List[Tuple[str, str, str]]: 关系三元组列表
+        """
         relationships = []
         
         # 只处理数字ID
@@ -621,7 +723,21 @@ class SubgraphQualityMetric(BaseMetric):
             return relationships
     
     def _get_entities_in_relationships(self, relationships: List[Tuple[str, str, str]]) -> Set[str]:
-        """获取参与关系的实体集合"""
+        """
+        获取参与关系的实体集合
+        
+        从关系三元组中提取所有唯一的实体ID，用于计算图的连通性指标。
+        对于每个三元组，提取源实体和目标实体，并将其添加到实体集合中。
+        
+        这个方法是计算图连通性的关键步骤，通过分析有多少实体参与了关系，
+        可以评估图结构的完整性和信息的连贯性。
+        
+        Args:
+            relationships: 关系三元组列表
+            
+        Returns:
+            Set[str]: 参与关系的所有唯一实体ID集合
+        """
         entity_set = set()
         
         for rel in relationships:
@@ -633,7 +749,17 @@ class SubgraphQualityMetric(BaseMetric):
 
 
 class GraphCoverageMetric(BaseMetric):
-    """图覆盖率评估指标"""
+    """
+    图覆盖率评估指标
+    
+    评估GraphRAG系统对图数据的利用和覆盖程度。该指标从多个维度进行评估：
+    - 结构覆盖率：评估引用的实体和关系的数量和质量
+    - 相关性覆盖率：分析引用的图数据与问题的相关程度
+    - 连通性覆盖率：评估引用的实体之间的连接情况
+    
+    支持不同类型Agent的差异化评估，并实现了基于关键词和图数据的多维度分析策略。
+    当自动评估分数较低时，提供LLM回退机制进行深度语义评估。
+    """
     
     metric_name = "graph_coverage"
     
@@ -1300,7 +1426,18 @@ class EntityCoverageMetric(BaseMetric):
 
 
 class RelationshipUtilizationMetric(BaseMetric):
-    """关系利用率评估指标"""
+    """
+    关系利用率评估指标
+    
+    评估GraphRAG系统对实体关系的有效利用程度。该指标采用多层次评估策略：
+    - 数量维度：评估系统引用关系的数量
+    - 质量维度：分析关系描述的详细程度、类型多样性和有效性
+    - 相关性维度：评估关系与引用实体的相关程度
+    - 隐含关系：探索实体间可能存在的隐含连接
+    
+    实现了灵活的关系信息提取机制，能够处理多种关系表示格式，并为不同场景提供
+    相应的评分策略。当规则评分不足时，还能通过LLM进行深度语义评估作为补充。
+    """
     
     metric_name = "relationship_utilization"
     
@@ -1498,6 +1635,24 @@ class RelationshipUtilizationMetric(BaseMetric):
         return self.get_llm_fallback_score(prompt, default_score=0.35)
     
     def _get_relationship_info(self, referenced_rels) -> List[Dict[str, Any]]:
+        """
+        从引用的关系中提取详细信息
+        
+        实现了一个灵活的关系信息提取机制，能够：
+        1. 从字符串ID列表中提取关系详细信息
+        2. 将字符串ID规范化为数字ID
+        3. 从Neo4j数据库中查询关系的源实体、关系类型、目标实体和描述
+        4. 限制返回结果数量以确保性能
+        
+        该方法是评估关系质量的核心，通过获取结构化的关系信息，
+        为后续的数量、质量和相关性评分提供数据支持。
+        
+        Args:
+            referenced_rels: 引用的关系列表
+            
+        Returns:
+            List[Dict[str, Any]]: 包含关系详细信息的字典列表
+        """
         rel_info = []
         
         if not self.neo4j_client or not referenced_rels:

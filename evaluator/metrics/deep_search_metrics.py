@@ -2,17 +2,62 @@ from typing import Dict, List, Tuple
 import re
 from evaluator.core.base_metric import BaseMetric
 
+"""
+深度搜索评估指标模块
+
+此模块实现了用于评估GraphRAG系统深度思考和搜索过程的核心指标，包括：
+- ReasoningCoherence（推理连贯性）：评估系统思考过程的逻辑连贯程度和结构完整性
+- ReasoningDepth（推理深度）：评估系统思考过程的深度和复杂性，包括查询数量和质量
+
+这些指标特别适用于评估DeepResearchTool等具有复杂思考过程的Agent，
+通过分析思考过程的结构和内容，结合LLM的深度语义评估，提供全面的质量评价。
+"""
+
 class ReasoningCoherence(BaseMetric):
-    """评估推理过程的连贯性"""
+    """
+    推理连贯性评估指标
     
+    评估GraphRAG系统中Agent思考过程的逻辑连贯程度、结构完整性和推理合理性。
+    采用混合评估策略：
+    1. 首先分析思考过程的结构特性（搜索查询数量、段落组织）
+    2. 使用LLM进行深度语义评估，分析逻辑性和推理质量
+    3. 根据情况采用规则评分或LLM评分，或取两者较高值
+    
+    此指标特别适合评估DeepResearchTool等复杂思考Agent的推理质量，
+    能够有效识别推理过程中的逻辑问题和结构缺陷。
+    """
+    
+    # 指标名称，用于在评估系统中唯一标识此指标
     metric_name = "reasoning_coherence"
     
     def __init__(self, config):
+        """
+        初始化推理连贯性评估器
+        
+        Args:
+            config: 评估配置，包含LLM实例和其他参数设置
+        """
         super().__init__(config)
+        # 获取可选的LLM实例，用于深度语义评估
         self.llm = config.get("llm", None)
     
     def calculate_metric(self, data) -> Tuple[Dict[str, float], List[float]]:
-        """计算推理连贯性得分"""
+        """
+        计算推理连贯性得分 - 结合结构分析和LLM语义评估
+        
+        实现了一个智能的两步评估策略：
+        1. 首先提取并分析思考过程的结构特征
+        2. 然后根据需要使用LLM进行深度语义评估
+        3. 提供完整的错误处理和回退机制
+        
+        Args:
+            data: 评估数据，包含问题、回答和思考过程
+            
+        Returns:
+            Tuple[Dict[str, float], List[float]]: 
+                - 第一个元素：总体平均得分，格式为{"reasoning_coherence": 得分}
+                - 第二个元素：每个样本的连贯性得分列表
+        """
         self.log("\n======== ReasoningCoherence 计算日志 ========")
         self.log(f"样本总数: {len(data.samples) if hasattr(data, 'samples') else 0}")
         
@@ -39,7 +84,6 @@ class ReasoningCoherence(BaseMetric):
                     self.log(f"  从答案中提取思考过程，长度: {len(thinking_process)}")
 
             if thinking_process:
-                thinking_process = thinking_match.group(1).strip()
                 self.log(f"  成功提取思考过程，长度: {len(thinking_process)}")
                 
                 # 评估思考过程的结构
@@ -168,16 +212,51 @@ class ReasoningCoherence(BaseMetric):
 
 
 class ReasoningDepth(BaseMetric):
-    """评估推理过程的深度"""
+    """
+    推理深度评估指标
     
+    评估GraphRAG系统中Agent思考过程的深度、复杂性和全面性。
+    采用混合评估策略：
+    1. 首先分析思考过程的量化特征（搜索查询数量、思考段落数量）
+    2. 分析搜索查询的多样性和针对性
+    3. 使用LLM进行深度语义评估，分析推理质量和深度
+    
+    此指标特别适合评估DeepResearchTool等复杂思考Agent的思考深度，
+    能够有效识别思考过程的全面性和深入程度。
+    """
+    
+    # 指标名称，用于在评估系统中唯一标识此指标
     metric_name = "reasoning_depth"
     
     def __init__(self, config):
+        """
+        初始化推理深度评估器
+        
+        Args:
+            config: 评估配置，包含LLM实例和其他参数设置
+        """
         super().__init__(config)
+        # 获取可选的LLM实例，用于深度语义评估
         self.llm = config.get("llm", None)
     
     def calculate_metric(self, data) -> Tuple[Dict[str, float], List[float]]:
-        """计算推理深度得分"""
+        """
+        计算推理深度得分 - 结合量化特征分析和LLM语义评估
+        
+        实现了一个综合评估策略：
+        1. 首先提取思考过程并分析其量化特征
+        2. 计算基于结构特征的规则得分
+        3. 使用LLM评估推理的深度和质量
+        4. 提供完整的错误处理和回退机制
+        
+        Args:
+            data: 评估数据，包含问题、回答和思考过程
+            
+        Returns:
+            Tuple[Dict[str, float], List[float]]: 
+                - 第一个元素：总体平均得分，格式为{"reasoning_depth": 得分}
+                - 第二个元素：每个样本的深度得分列表
+        """
         self.log("\n======== ReasoningDepth 计算日志 ========")
         self.log(f"样本总数: {len(data.samples) if hasattr(data, 'samples') else 0}")
         
@@ -333,16 +412,57 @@ class ReasoningDepth(BaseMetric):
 
 
 class IterativeImprovementMetric(BaseMetric):
-    """评估迭代改进效果"""
+    """
+    迭代改进评估指标
     
+    评估GraphRAG系统中Agent在多轮思考过程中的学习和改进能力。
+    特别适用于评估DeepResearchTool等具有迭代查询能力的Agent，
+    通过分析思考过程中的查询演进和信息提取质量变化，评估其自我完善能力。
+    
+    采用混合评估策略：
+    1. 首先分析思考过程的迭代次数等量化特征
+    2. 对比首轮和末轮查询的内容变化和信息提取质量
+    3. 使用LLM进行深度语义评估，分析迭代过程中的实质性改进
+    
+    此指标能够有效识别Agent是否通过多轮迭代真正提升了对问题的理解和回答质量。
+    """
+    
+    # 指标名称，用于在评估系统中唯一标识此指标
     metric_name = "iterative_improvement"
     
     def __init__(self, config):
+        """
+        初始化迭代改进评估器
+        
+        Args:
+            config: 评估配置，包含LLM实例和其他参数设置
+        """
         super().__init__(config)
+        # 获取可选的LLM实例，用于深度语义评估
         self.llm = config.get("llm", None)
     
     def calculate_metric(self, data) -> Tuple[Dict[str, float], List[float]]:
-        """计算迭代改进得分"""
+        """
+        计算迭代改进得分 - 分析多轮思考中的学习和改进过程
+        
+        实现了一个智能的迭代评估策略：
+        1. 首先提取思考过程并识别其中的迭代结构和查询序列
+        2. 基于迭代次数计算基础得分
+        3. 对比首轮和末轮查询及信息提取，评估实质性改进
+        4. 使用LLM进行深度语义评估（当迭代次数充足时）
+        5. 提供完整的错误处理和回退机制
+        
+        此方法专门设计用于评估DeepResearchTool等多轮迭代Agent的自我改进能力，
+        通过对比不同迭代阶段的查询质量和信息提取效果，全面评估Agent的学习潜力。
+        
+        Args:
+            data: 评估数据，包含问题、回答和思考过程
+            
+        Returns:
+            Tuple[Dict[str, float], List[float]]: 
+                - 第一个元素：总体平均得分，格式为{"iterative_improvement": 得分}
+                - 第二个元素：每个样本的迭代改进得分列表
+        """
         self.log("\n======== IterativeImprovement 计算日志 ========")
         self.log(f"样本总数: {len(data.samples) if hasattr(data, 'samples') else 0}")
         
@@ -512,16 +632,64 @@ class IterativeImprovementMetric(BaseMetric):
 
 
 class KnowledgeGraphUtilizationMetric(BaseMetric):
-    """评估知识图谱利用程度（专为DeeperResearchTool设计）"""
+    """
+    知识图谱利用程度评估指标
     
+    专门评估GraphRAG系统中Agent对知识图谱的有效利用程度，尤其针对DeeperResearchTool设计。
+    
+    该指标关注Agent在思考和回答过程中是否充分利用了知识图谱的结构化信息，
+    包括实体间关系的识别、图结构信息的应用以及多跳推理能力的展现。
+    
+    评估策略包括：
+    1. 分析思考过程中对图结构的提及和引用
+    2. 检查回答中是否利用了实体关系进行推理
+    3. 使用LLM进行深度语义评估，分析图谱信息的有效应用
+    
+    此指标对于全面评估GraphRAG系统的图结构优势是否真正转化为回答质量提升至关重要。
+    """
+    
+    # 指标名称，用于在评估系统中唯一标识此指标
     metric_name = "knowledge_graph_utilization"
     
     def __init__(self, config):
+        """
+        初始化知识图谱利用评估器
+        
+        Args:
+            config: 评估配置，包含LLM实例和其他参数设置
+        """
         super().__init__(config)
+        # 获取可选的LLM实例，用于深度语义评估
         self.llm = config.get("llm", None)
     
     def calculate_metric(self, data) -> Tuple[Dict[str, float], List[float]]:
-        """计算知识图谱利用率得分"""
+        """
+        计算知识图谱利用程度得分 - 分析Agent对知识图谱信息的有效利用
+        
+        实现了一个多维度的图谱利用评估策略：
+        1. 首先从答案中提取实体和社区信息
+        2. 分析回答中对实体和关系概念的引用频率
+        3. 提取并分析思考过程中对图谱相关概念的提及
+        4. 基于规则计算基础得分（考虑图谱概念提及频率、实体信息提取等）
+        5. 使用LLM进行深度语义评估，分析图谱信息的实际应用质量
+        6. 提供完整的错误处理和回退机制
+        
+        该方法特别关注：
+        - 知识图谱实体的识别和引用
+        - 实体间关系的提取和利用
+        - 知识社区的识别和应用
+        - 图谱结构信息在推理过程中的融入
+        
+        这是评估GraphRAG系统核心价值的关键指标之一，直接反映了结构化知识如何提升回答质量。
+        
+        Args:
+            data: 评估数据，包含问题、回答和思考过程
+            
+        Returns:
+            Tuple[Dict[str, float], List[float]]: 
+                - 第一个元素：总体平均得分，格式为{"knowledge_graph_utilization": 得分}
+                - 第二个元素：每个样本的图谱利用得分列表
+        """
         self.log("\n======== KnowledgeGraphUtilization 计算日志 ========")
         self.log(f"样本总数: {len(data.samples) if hasattr(data, 'samples') else 0}")
         

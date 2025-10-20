@@ -4,26 +4,59 @@ from typing import Dict, List, Tuple
 from evaluator.core.base_metric import BaseMetric
 from evaluator.preprocessing.reference_extractor import extract_references_from_answer
 
+"""
+LLM评估指标模块
+
+此模块实现了基于LLM的高级评估指标，主要用于评估GraphRAG系统回答的质量特征，包括：
+- ResponseCoherence（回答连贯性）：评估系统回答的逻辑连贯性和结构化程度
+- FactualConsistency（事实一致性）：评估回答内容的事实一致性和自洽性
+
+这些指标充分利用LLM的深度理解能力，对系统回答进行语义层面的高级评估，
+提供传统规则评估难以实现的质量洞察。
+"""
+
 class ResponseCoherence(BaseMetric):
     """
-    回答连贯性评估指标 - 评估回答的连贯性和结构化程度
+    回答连贯性评估指标
+    
+    评估GraphRAG系统回答的逻辑连贯性、结构完整性和表达流畅度。
+    采用混合评估策略：
+    1. 首先分析回答的形式化特征（段落数量、标题使用、句子数量）
+    2. 然后使用LLM进行深度语义评估，分析逻辑连贯性和表达质量
+    
+    此指标能够有效识别回答是否组织良好、逻辑清晰，为用户提供流畅的阅读体验。
     """
     
+    # 指标名称，用于在评估系统中唯一标识此指标
     metric_name = "response_coherence"
     
     def __init__(self, config):
+        """
+        初始化回答连贯性评估器
+        
+        Args:
+            config: 评估配置，包含LLM实例等参数
+        """
         super().__init__(config)
+        # 获取LLM实例，用于深度语义评估
         self.llm = config.get("llm", None)
     
     def calculate_metric(self, data) -> Tuple[Dict[str, float], List[float]]:
         """
-        计算回答连贯性
+        计算回答连贯性得分 - 结合结构特征分析和LLM语义评估
+        
+        实现了一个多维度的回答连贯性评估流程：
+        1. 提取回答的结构特征进行定量分析
+        2. 使用LLM评估回答的逻辑连贯性和表达质量
+        3. 提供详细的评估日志和原因分析
         
         Args:
-            data: 评估数据
+            data: 评估数据，包含问题和系统回答
             
         Returns:
-            Tuple[Dict[str, float], List[float]]: 总体得分和每个样本的得分
+            Tuple[Dict[str, float], List[float]]: 
+                - 第一个元素：总体平均得分，格式为{"response_coherence": 得分}
+                - 第二个元素：每个样本的连贯性得分列表
         """
         self.log("\n======== ResponseCoherence 计算日志 ========")
         self.log(f"样本总数: {len(data.samples) if hasattr(data, 'samples') else 0}")
@@ -112,18 +145,48 @@ class ResponseCoherence(BaseMetric):
 
 class FactualConsistency(BaseMetric):
     """
-    事实一致性评估指标 - 评估回答与检索到的事实的一致性
+    事实一致性评估指标
+    
+    评估GraphRAG系统回答内容的事实准确性、逻辑自洽性和信息一致性。
+    采用多层次评估策略：
+    1. 提取回答中引用的实体和关系信息
+    2. 识别回答中的关键事实点
+    3. 使用LLM进行深度语义评估，分析事实内容的一致性和准确性
+    
+    此指标能够有效识别回答中可能存在的事实错误、逻辑矛盾或信息不一致问题。
     """
     
+    # 指标名称，用于在评估系统中唯一标识此指标
     metric_name = "factual_consistency"
     
     def __init__(self, config):
+        """
+        初始化事实一致性评估器
+        
+        Args:
+            config: 评估配置，包含LLM实例等参数
+        """
         super().__init__(config)
+        # 获取LLM实例，用于深度语义评估
         self.llm = config.get("llm", None)
     
     def calculate_metric(self, data) -> Tuple[Dict[str, float], List[float]]:
         """
-        计算事实一致性
+        计算事实一致性得分 - 基于关键信息提取和LLM语义评估
+        
+        实现了一个智能的事实一致性评估流程：
+        1. 提取回答中引用的实体和关系信息
+        2. 识别并整理回答中的关键事实点
+        3. 使用LLM评估关键事实点的一致性和准确性
+        4. 提供完整的错误处理和回退机制
+        
+        Args:
+            data: 评估数据，包含问题、回答、检索到的实体和关系
+            
+        Returns:
+            Tuple[Dict[str, float], List[float]]: 
+                - 第一个元素：总体平均得分，格式为{"factual_consistency": 得分}
+                - 第二个元素：每个样本的事实一致性得分列表
         """
         self.log("\n======== FactualConsistency 计算日志 ========")
         self.log(f"样本总数: {len(data.samples) if hasattr(data, 'samples') else 0}")
@@ -232,24 +295,56 @@ class FactualConsistency(BaseMetric):
 
 class ComprehensiveAnswerMetric(BaseMetric):
     """
-    回答全面性评估指标 - 评估回答是否全面解答了问题
+    回答全面性评估指标
+    
+    评估GraphRAG系统回答是否全面、深入地解答了用户问题的所有方面。
+    该指标特别关注：
+    - 回答的信息丰富度和完整性
+    - 对问题各子方面的覆盖程度
+    - 细节和深度的平衡
+    - 能否满足用户的实际信息需求
+    
+    此指标利用LLM的深度理解能力，从语义层面评估回答质量，
+    能够识别传统定量指标难以捕捉的回答深度和广度特征。
     """
     
     metric_name = "answer_comprehensiveness"
     
     def __init__(self, config):
+        """
+        初始化回答全面性评估器
+        
+        Args:
+            config: 评估配置，包含LLM实例等参数
+        """
         super().__init__(config)
         self.llm = config.get("llm", None)
     
     def calculate_metric(self, data) -> Tuple[Dict[str, float], List[float]]:
         """
-        计算回答全面性
+        计算回答全面性得分
+        
+        实现了一个基于LLM的深度语义评估流程，专注于评估回答的全面性和信息丰富度：
+        1. 分析问题和回答的基本特征（长度、复杂度）
+        2. 使用LLM评估回答是否全面涵盖了问题的所有关键方面
+        3. 根据得分区间提供详细的评估原因分析
+        4. 提供完整的错误处理和默认得分机制
+        
+        该方法特别关注：
+        - 回答的语义完整性和内容深度
+        - 对问题各子问题的解答情况
+        - 信息的充分性和相关性
+        - 回答的实用性和满足用户需求的程度
+        
+        在GraphRAG评估体系中，回答全面性是衡量系统知识整合和推理能力的重要指标。
         
         Args:
-            data: 评估数据
+            data: 评估数据，包含问题、系统回答等信息
             
         Returns:
-            Tuple[Dict[str, float], List[float]]: 总体得分和每个样本的得分
+            Tuple[Dict[str, float], List[float]]: 
+                - 第一个元素：总体平均全面性得分，格式为{"answer_comprehensiveness": 得分}
+                - 第二个元素：每个样本的全面性得分列表
         """
         self.log("\n======== AnswerComprehensiveness 计算日志 ========")
         self.log(f"样本总数: {len(data.samples) if hasattr(data, 'samples') else 0}")
@@ -328,12 +423,27 @@ class ComprehensiveAnswerMetric(BaseMetric):
 
 class LLMGraphRagEvaluator(BaseMetric):
     """
-    使用LLM评估GraphRAG和HybridRAG的性能
+    LLM综合评估器 - GraphRAG和HybridRAG性能评估
+    
+    一个强大的综合评估工具，利用LLM对GraphRAG和HybridRAG系统的整体性能进行深度评估。
+    该评估器采用多维度评分策略，全面分析：
+    - 回答质量和相关性
+    - 推理过程的逻辑性和合理性
+    - 对知识图谱和文档检索结果的有效利用
+    - 整体用户体验和满意度
+    
+    与单一指标不同，此评估器提供了一个综合性的性能视角，能够捕捉其他专项指标可能忽略的系统整体表现特征。
     """
     
     metric_name = "llm_evaluation"
     
     def __init__(self, config):
+        """
+        初始化LLM综合评估器
+        
+        Args:
+            config: 评估配置，包含LLM实例和其他必要参数
+        """
         super().__init__(config)
         self.llm = config.get("llm", None)
         self.aspect_weights = {
@@ -349,13 +459,30 @@ class LLMGraphRagEvaluator(BaseMetric):
     
     def calculate_metric(self, data) -> Tuple[Dict[str, float], List[Dict[str, float]]]:
         """
-        使用LLM计算评估指标
+        使用LLM计算GraphRAG系统的综合评估指标
+        
+        实现了一个复杂的多维度LLM评估流程，对GraphRAG和HybridRAG系统进行全面评估：
+        1. 对每个样本进行深入的语义分析和质量评估
+        2. 从四个关键维度进行精细化评分：全面性、相关性、增强理解能力和直接性
+        3. 计算各维度的平均分和加权总分
+        4. 提供详细的评估日志和错误处理机制
+        
+        该方法的核心优势在于：
+        - 使用可配置的维度权重，实现评估重点的灵活调整
+        - 对每个回答进行预处理，移除引用等干扰信息
+        - 采用结构化的JSON输出格式，便于结果解析和聚合
+        - 实现了完善的错误处理和默认得分机制
+        
+        这种综合评估方法能够提供比单一指标更全面的系统性能洞察，
+        特别适合评估复杂的RAG系统在实际应用场景中的整体表现。
         
         Args:
-            data: 评估数据
+            data: 评估数据，包含问题、系统回答等信息
             
         Returns:
-            Tuple[Dict[str, float], List[Dict[str, float]]]: 总体得分和每个样本的得分
+            Tuple[Dict[str, float], List[Dict[str, float]]]: 
+                - 第一个元素：包含各维度平均分和加权总分的字典
+                - 第二个元素：每个样本的详细评分字典列表
         """
         self.log("\n======== LLMGraphRagEvaluator 计算日志 ========")
         self.log(f"样本总数: {len(data.samples) if hasattr(data, 'samples') else 0}")
@@ -443,14 +570,27 @@ class LLMGraphRagEvaluator(BaseMetric):
     
     def _evaluate_answer(self, question: str, answer: str) -> Dict[str, float]:
         """
-        对单个回答进行评估
+        对单个回答进行全面的LLM评估
+        
+        为单个问答对执行端到端的评估流程，包括：
+        1. 清理回答文本，移除引用等干扰信息
+        2. 构建详细的LLM评估提示
+        3. 调用LLM执行评估
+        4. 解析和返回多维度评分结果
+        
+        此方法作为核心评估单元，能够独立对单个问答对进行评估，
+        便于系统集成和单独测试。
         
         Args:
-            question: 问题
-            answer: 回答
+            question: 用户问题文本
+            answer: 系统生成的回答文本
             
         Returns:
-            Dict[str, float]: 各个方面的评分
+            Dict[str, float]: 包含四个关键维度评分的字典
+                - comprehensiveness: 全面性得分
+                - relativeness: 相关性得分
+                - empowerment: 增强理解能力得分
+                - directness: 直接性得分
         """
         # 清理回答，移除引用数据部分
         cleaned_answer = self._clean_references(answer)
@@ -469,7 +609,25 @@ class LLMGraphRagEvaluator(BaseMetric):
             return {aspect: 0.5 for aspect in self.aspect_weights}  # 默认中等分数
     
     def _clean_references(self, answer: str) -> str:
-        """清理引用数据部分"""
+        """
+        清理回答中的引用数据部分
+        
+        此方法通过正则表达式清理评估文本中的干扰信息，确保LLM评估的焦点集中在
+        回答的实际内容上，而不是引用格式或元数据上。
+        
+        采用了多层级的清理策略：
+        1. 尝试匹配标准的引用数据格式（Markdown标题+JSON格式）
+        2. 如果未匹配成功，尝试另一种常见格式
+        3. 最后移除任何尾部空行，确保返回干净的文本
+        
+        这种清理对于准确评估回答质量至关重要，因为引用部分不应计入内容评估。
+        
+        Args:
+            answer: 原始系统回答文本
+            
+        Returns:
+            str: 清理后的纯回答内容，不包含引用数据部分
+        """
         # 移除引用数据部分
         cleaned = re.sub(r'#{1,4}\s*引用数据[\s\S]*?(\{[\s\S]*?\})\s*$', '', answer)
         
@@ -483,7 +641,26 @@ class LLMGraphRagEvaluator(BaseMetric):
         return cleaned
     
     def _create_evaluation_prompt(self, question: str, answer: str) -> str:
-        """创建用于评估的提示"""
+        """
+        创建用于LLM评估的详细提示
+        
+        构建一个结构化的评估提示，指导LLM从四个关键维度对回答质量进行评估。
+        提示设计特别注重：
+        - 提供清晰的评分标准和解释
+        - 为每个维度定义0-1的分数范围和含义
+        - 指定严格的JSON输出格式要求
+        - 包含评分理由字段，增强评估的可解释性
+        
+        这种精心设计的提示确保了LLM评估的一致性和可靠性，
+        使评估结果更具可比性和参考价值。
+        
+        Args:
+            question: 用户问题文本
+            answer: 清理后的回答文本
+            
+        Returns:
+            str: 格式化的评估提示文本
+        """
         return f"""
         请评估以下回答相对于问题的质量，给出0到1之间的分数（可以使用小数）。
         
@@ -525,11 +702,31 @@ class LLMGraphRagEvaluator(BaseMetric):
         """
         解析LLM的评估结果
         
+        实现了一个鲁棒的结果解析机制，从LLM的响应中提取结构化的评估数据：
+        1. 使用正则表达式定位JSON格式的评估结果
+        2. 解析JSON对象提取四个维度的评分
+        3. 对评分进行有效性验证和范围限制（0-1）
+        4. 实现完善的错误处理和默认值机制
+        5. 提取和记录评分理由，增强评估的可解释性
+        
+        该方法的关键特点：
+        - 采用容错设计，即使LLM输出格式不完美也能提取有用信息
+        - 对每个维度的评分设置默认值，确保评估流程不会中断
+        - 提供详细的日志记录，便于调试和结果分析
+        - 实现数据清洗，确保评分在有效范围内
+        
+        这种鲁棒的解析机制对于确保评估系统的稳定性和可靠性至关重要，
+        特别是在处理可能返回非标准格式的LLM响应时。
+        
         Args:
-            content: LLM响应内容
+            content: LLM生成的原始评估响应内容
             
         Returns:
-            Dict[str, float]: 各个方面的评分
+            Dict[str, float]: 包含各维度有效评分的字典
+                - comprehensiveness: 全面性得分
+                - relativeness: 相关性得分
+                - empowerment: 增强理解能力得分
+                - directness: 直接性得分
         """
         self.log("  正在解析LLM评估结果...")
         
