@@ -35,18 +35,27 @@ class DeeperResearchTool:
     增强版深度研究工具
     
     整合社区感知、动态知识图谱和Chain of Exploration等功能，
-    提供更全面的深度研究能力，并充分利用所有高级推理功能
+    提供更全面的深度研究能力，并充分利用所有高级推理功能。
+    
+    该工具是Graph RAG Agent系统中的核心组件，通过整合多种先进技术，
+    为复杂查询提供更深入、全面和准确的分析和回答。
     """
     
     def __init__(self, config=None, llm=None, embeddings=None, graph=None):
         """
         初始化增强版深度研究工具
         
-        Args:
-            config: 配置参数
-            llm: 语言模型
-            embeddings: 嵌入模型
-            graph: 图数据库连接
+        参数:
+            config: 配置参数字典，可选
+            llm: 大语言模型实例，用于生成文本和推理
+            embeddings: 嵌入模型，用于文本向量化
+            graph: 图数据库连接实例，用于知识图谱操作
+            
+        初始化内容:
+            - 关键词和搜索结果缓存
+            - 基础组件（语言模型、嵌入模型、图数据库连接）
+            - 增强模块（社区感知搜索、知识图谱构建、Chain of Exploration等）
+            - 证据跟踪和缓存管理系统
         """
         # 关键词缓存
         self._keywords_cache = {}
@@ -129,12 +138,34 @@ class DeeperResearchTool:
         self._subquery_cache = {}
     
     def _log(self, message):
-        """记录执行日志"""
+        """
+        记录执行日志
+        
+        参数:
+            message: 要记录的日志消息内容
+            
+        功能:
+            - 将消息添加到执行日志列表中
+            - 可选择性地打印到控制台（当前被注释掉）
+        """
         self.execution_logs.append(message)
         # print(message)  # 可选：同时打印到控制台
     
     def extract_keywords(self, query: str) -> Dict[str, List[str]]:
-        """从查询中提取关键词"""
+        """
+        从查询中提取关键词
+        
+        参数:
+            query: 用户输入的查询文本
+            
+        返回:
+            包含不同类型关键词列表的字典
+            
+        功能:
+            - 利用缓存避免重复提取
+            - 通过混合搜索工具执行关键词提取
+            - 返回结构化的关键词信息
+        """
         # 检查缓存
         if query in self._keywords_cache:
             return self._keywords_cache[query]
@@ -149,12 +180,18 @@ class DeeperResearchTool:
         """
         使用Chain of Exploration增强搜索
         
-        Args:
-            query: 用户查询
-            keywords: 关键词字典
+        参数:
+            query: 用户查询文本
+            keywords: 包含不同类型关键词的字典
             
-        Returns:
-            Dict: 增强搜索结果
+        返回:
+            增强搜索结果字典，包含社区上下文和探索信息
+            
+        功能:
+            - 社区感知搜索增强
+            - 基于关键词的知识探索
+            - Chain of Exploration路径生成
+            - 结果缓存和优化
         """
         # 添加缓存检查
         cache_key = f"coe_search:{query}"
@@ -211,12 +248,18 @@ class DeeperResearchTool:
         """
         根据多个假设创建多个推理分支
         
-        Args:
-            query_id: 查询ID
-            hypotheses: 假设列表
+        参数:
+            query_id: 查询的唯一标识符
+            hypotheses: 可选的假设列表，若未提供则自动生成
             
-        Returns:
-            Dict: 包含分支结果的字典
+        返回:
+            包含各分支信息和分析结果的字典
+            
+        功能:
+            - 多假设推理分支创建
+            - 反事实分析（对第一个分支）
+            - 分支推理步骤记录
+            - 思考引擎分支管理
         """
         branch_results = {}
         
@@ -319,11 +362,17 @@ class DeeperResearchTool:
         """
         检测并处理信息矛盾
         
-        Args:
-            query_id: 查询ID
+        参数:
+            query_id: 查询的唯一标识符
             
-        Returns:
-            Dict: 矛盾分析结果
+        返回:
+            包含矛盾检测和分析结果的字典
+            
+        功能:
+            - 证据收集和分析
+            - 矛盾类型识别（数值矛盾、语义矛盾）
+            - 矛盾分析和记录
+            - 结果缓存优化
         """
         # 添加缓存检查
         cache_key = f"contradiction:{query_id}"
@@ -389,12 +438,17 @@ class DeeperResearchTool:
         """
         为答案生成引用标记
         
-        Args:
-            answer: 原始答案
-            query_id: 查询ID
+        参数:
+            answer: 原始答案文本
+            query_id: 查询的唯一标识符
             
-        Returns:
-            str: 带引用的答案
+        返回:
+            添加了引用标记的答案文本
+            
+        功能:
+            - 通过证据链跟踪器生成学术风格的引用
+            - 记录引用生成信息
+            - 保持答案内容的完整性
         """
         # 使用证据链跟踪器生成引用
         citation_result = self.evidence_tracker.generate_citations(answer)
@@ -409,11 +463,17 @@ class DeeperResearchTool:
         """
         合并多个推理分支的结果
         
-        Args:
-            query_id: 查询ID
+        参数:
+            query_id: 查询的唯一标识符
             
-        Returns:
-            str: 合并后的推理
+        返回:
+            合并后的多分支推理分析报告
+            
+        功能:
+            - 收集和整合各分支信息
+            - 提取各分支关键发现和证据
+            - 合并分支到主分支
+            - 生成结构化的合并报告
         """
         merged_reasoning = "## 多分支推理结果\n\n"
         
@@ -466,11 +526,18 @@ class DeeperResearchTool:
         """
         执行增强版深度研究推理过程
         
-        Args:
-            query: 用户问题
+        参数:
+            query: 用户问题文本
                     
-        Returns:
-            Dict: 包含思考过程和最终答案的字典
+        返回:
+            包含思考过程和最终答案的字典
+            
+        功能:
+            - 关键词提取和子查询生成
+            - 社区感知和知识探索增强
+            - 知识图谱构建和分析
+            - 多假设推理和矛盾检测
+            - 结果整合和优化
         """
         # 清空执行日志
         self.execution_logs = []
@@ -1745,11 +1812,21 @@ class DeeperResearchTool:
         """
         执行带流式输出的增强深度研究
         
-        Args:
-            query_input: 查询或包含查询的字典
+        参数:
+            query_input: 查询字符串或包含查询的字典对象
                 
-        Yields:
-            流式内容
+        返回:
+            异步生成器，产生流式文本内容
+            
+        功能:
+            - 查询输入解析和标准化
+            - 缓存检查和结果快速返回
+            - 查询复杂度评估和处理模式选择
+            - 链式探索方法搜索知识
+            - 异步思考流调用和结果处理
+            - 信息一致性分析和矛盾检测
+            - 结果缓存优化
+            - 性能指标跟踪和记录
         """
         overall_start = time.time()
         
@@ -1868,11 +1945,21 @@ class DeeperResearchTool:
         """
         执行带流式输出的增强深度研究
         
-        Args:
-            query: 用户问题
+        参数:
+            query: 用户问题文本
                     
-        Yields:
-            思考步骤和最终答案
+        返回:
+            异步生成器，产生思考步骤和最终答案
+            
+        功能:
+            - 关键词提取和子查询生成
+            - 社区感知和知识探索增强
+            - 知识图谱构建和分析
+            - 多假设生成和推理
+            - 异步处理和并行计算
+            - 搜索结果处理和证据跟踪
+            - 信息一致性验证
+            - 迭代搜索和推理优化
         """
         overall_start = time.time()
         
@@ -2653,7 +2740,15 @@ class DeeperResearchTool:
             yield {"answer": final_answer, "thinking": think}
         
     def close(self):
-        """关闭资源"""
+        """
+        关闭并释放占用的资源
+        
+        功能:
+            - 检查deep_research组件是否存在
+            - 调用deep_research组件的close方法关闭其资源
+            - 释放系统资源，避免内存泄漏
+            - 确保在对象不再使用时正确清理所有依赖组件
+        """
         # 关闭deep_research的资源
         if hasattr(self, 'deep_research'):
             self.deep_research.close()

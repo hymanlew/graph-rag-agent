@@ -207,6 +207,28 @@ class DualPathSearcher:
             if "text" in chunk:
                 texts.append(chunk["text"])
         
+        # 从Chunks中提取文本（大写C的Chunks字段）
+        for chunk in results.get("Chunks", []):
+            if "text" in chunk:
+                text = chunk["text"]
+                # 避免重复添加相同的文本
+                if text not in texts:
+                    texts.append(text)
+        
+        # 从reports中提取文本
+        for report in results.get("reports", []):
+            if isinstance(report, dict):
+                # 检查常见的文本字段
+                for field in ["text", "content", "summary", "description"]:
+                    if field in report and isinstance(report[field], str):
+                        text = report[field]
+                        if text not in texts:
+                            texts.append(text)
+            elif isinstance(report, str):
+                # 如果report本身是字符串
+                if report not in texts:
+                    texts.append(report)
+        
         return "\n\n".join(texts)
 
     def _evaluate_results_with_llm(self, query: str, text1: str, text2: str) -> str:
@@ -418,10 +440,14 @@ class DualPathSearcher:
         - 在无法确定单一最佳结果时提供综合解决方案
         - 增强系统对复杂查询的适应性和鲁棒性
         """
-        # 初始化结果字典
+        # 初始化结果字典，确保包含所有必要的字段
         result = {
             "chunks": result1.get("chunks", []).copy(),
-            "doc_aggs": result1.get("doc_aggs", []).copy()
+            "doc_aggs": result1.get("doc_aggs", []).copy(),
+            "entities": result1.get("entities", []).copy(),
+            "reports": result1.get("reports", []).copy(),
+            "relationships": result1.get("relationships", []).copy(),
+            "Chunks": result1.get("Chunks", []).copy()
         }
         
         # 如果第一个结果没有chunks，直接使用第二个结果
@@ -452,9 +478,49 @@ class DualPathSearcher:
                 result["doc_aggs"].append(doc)
                 existing_doc_ids.add(doc_id)
         
+        # 合并entities列表，避免重复
+        existing_entity_ids = set(e.get("id", str(e)) for e in result["entities"])
+        for entity in result2.get("entities", []):
+            entity_id = entity.get("id", str(entity))
+            if entity_id not in existing_entity_ids:
+                result["entities"].append(entity)
+                existing_entity_ids.add(entity_id)
+        
+        # 合并reports列表，避免重复
+        existing_report_ids = set(r.get("id", str(r)) for r in result["reports"])
+        for report in result2.get("reports", []):
+            report_id = report.get("id", str(report))
+            if report_id not in existing_report_ids:
+                result["reports"].append(report)
+                existing_report_ids.add(report_id)
+        
+        # 合并relationships列表，避免重复
+        existing_relationship_ids = set(
+            f"{r.get('source', '')}-{r.get('target', '')}-{r.get('type', '')}" 
+            for r in result["relationships"]
+        )
+        for rel in result2.get("relationships", []):
+            rel_id = f"{rel.get('source', '')}-{rel.get('target', '')}-{rel.get('type', '')}"
+            if rel_id not in existing_relationship_ids:
+                result["relationships"].append(rel)
+                existing_relationship_ids.add(rel_id)
+        
+        # 合并Chunks列表，避免重复
+        for chunk in result2.get("Chunks", []):
+            chunk_id = chunk.get("chunk_id")
+            if chunk_id:
+                # 如果有chunk_id，使用chunk_id去重
+                if chunk_id not in existing_chunk_ids:
+                    result["Chunks"].append(chunk)
+            else:
+                # 如果没有chunk_id，使用内容去重
+                content = chunk.get("text", "")
+                if not any(c.get("text") == content for c in result["Chunks"]):
+                    result["Chunks"].append(chunk)
+        
         # 复制其他字段
         for key in result2:
-            if key not in ["chunks", "doc_aggs"]:
+            if key not in ["chunks", "doc_aggs", "entities", "reports", "relationships", "Chunks"]:
                 if key not in result:
                     result[key] = result2[key]
                 elif isinstance(result[key], list) and isinstance(result2[key], list):
