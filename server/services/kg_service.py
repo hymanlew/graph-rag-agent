@@ -14,13 +14,20 @@ def extract_kg_from_message(message: str, query: str = None, reference: Dict = N
     """
     从消息中提取知识图谱实体和关系数据
     
+    该函数实现了从文本消息中提取知识图谱相关信息的核心功能，是知识图谱服务的入口函数之一。
+    通过解析消息内容，可以识别出其中包含的实体及其相互之间的关系，并将这些信息组织成
+    标准的知识图谱格式，包含节点(nodes)和连接(links)两部分。
+    
     Args:
-        message: 消息文本
-        query: 用户查询内容(可选)
-        reference: 引用数据(可选)
+        message: 消息文本，需要从中提取实体和关系的原始消息
+        query: 用户查询内容(可选)，用于上下文增强和相关实体过滤
+        reference: 引用数据(可选)，包含可能的外部参考信息，用于实体确认和扩展
     
     Returns:
-        Dict: 知识图谱数据，包含节点和连接
+        Dict: 知识图谱数据，包含以下结构：
+            - nodes: 实体节点列表，每个节点包含id、label、description和group属性
+            - links: 实体间关系列表，每个关系包含source、target、label和weight属性
+            - 处理失败时返回空的图谱结构，确保调用方总能获得有效的返回值
     """
     try:
         # 如果提供了reference数据，优先使用
@@ -332,15 +339,23 @@ def get_graph_from_chunks(chunk_ids: List[str]) -> Dict:
 
 def get_knowledge_graph_for_ids(entity_ids=None, relationship_ids=None, chunk_ids=None) -> Dict:
     """
-    根据ID获取知识图谱数据
+    根据实体ID、关系ID或文本块ID获取知识图谱数据
+    
+    该函数实现了多维度知识图谱查询的统一接口，支持基于实体ID、关系ID或文本块ID进行查询，
+    并自动处理实体存在性验证、文本块到实体的映射等复杂逻辑。这是一个核心的知识图谱检索函数，
+    提供了灵活的数据获取方式，满足不同场景下的知识图谱查询需求。
     
     Args:
-        entity_ids: 实体ID列表(可选)
-        relationship_ids: 关系ID列表(可选)
-        chunk_ids: 文本块ID列表(可选)
+        entity_ids: 实体ID列表(可选)，指定需要查询的实体
+        relationship_ids: 关系ID列表(可选)，指定需要查询的关系
+        chunk_ids: 文本块ID列表(可选)，可以从文本块中提取关联实体
     
     Returns:
-        Dict: 知识图谱数据，包含节点和连接
+        Dict: 知识图谱数据，包含以下结构：
+            - nodes: 符合查询条件的实体节点集合
+            - links: 实体节点之间的关系连接
+            - 当直接查询失败时，会尝试基于文本块ID进行降级查询
+            - 所有参数为空时返回空图谱
     """
     try:
         # 确保所有参数都有默认值，避免None
@@ -504,14 +519,21 @@ def get_knowledge_graph_for_ids(entity_ids=None, relationship_ids=None, chunk_id
 
 def get_knowledge_graph(limit: int = 100, query: str = None) -> Dict:
     """
-    获取知识图谱数据
+    获取知识图谱数据，支持全局查询和关键词过滤
+    
+    该函数提供了获取知识图谱数据的通用接口，支持两种查询模式：全局随机采样和关键词过滤查询。
+    可以用于图谱可视化展示、全局统计分析或特定主题的知识探索。函数会动态构建Cypher查询语句，
+    并确保查询结果符合标准的知识图谱格式，便于前端展示和进一步处理。
     
     Args:
-        limit: 节点数量限制
-        query: 查询条件(可选)
+        limit: 节点数量限制，控制返回数据量大小，默认为100个节点
+        query: 查询条件(可选)，如果提供则进行关键词过滤，匹配实体的ID或描述信息
     
     Returns:
-        Dict: 知识图谱数据，包含节点和连接
+        Dict: 知识图谱数据，包含以下结构：
+            - nodes: 实体节点列表，包含id、label、description和group属性
+            - links: 实体间关系列表，包含source、target、label和weight属性
+            - 处理失败时返回错误信息和空图谱
     """
     try:
         # 确保limit是整数
@@ -593,13 +615,20 @@ def get_knowledge_graph(limit: int = 100, query: str = None) -> Dict:
 
 def get_source_content(source_id: str) -> str:
     """
-    根据源ID获取内容
+    根据源ID获取原始内容
+    
+    该函数用于获取与知识图谱实体相关联的原始文本内容，支持多种ID格式解析。函数能够处理
+    直接的文本块ID、复合ID格式，并根据不同类型返回相应的内容，包括文件名、文本内容或社区摘要。
+    这是知识图谱系统中连接结构化知识与原始文本的重要桥梁，便于用户查看知识实体的原始来源。
     
     Args:
-        source_id: 源ID
-        
+        source_id: 源ID，可以是文本块ID、复合ID或社区ID
+    
     Returns:
-        str: 源内容
+        str: 格式化的源内容，包括：
+            - 对于文本块：包含文件名和完整文本
+            - 对于社区：包含摘要和全文
+            - 处理失败或未找到时返回相应错误信息
     """
     try:
         if not source_id:
@@ -657,11 +686,17 @@ def get_source_file_info(source_id: str) -> dict:
     """
     获取源ID对应的文件信息
     
+    该函数专注于获取源ID相关的文件元信息，特别是文件名。与get_source_content不同，
+    它只返回基本的文件标识信息而不包含完整内容，适合在需要展示文件引用但不需要显示全文的场景中使用，
+    如在知识图谱可视化中显示实体的来源文件。
+    
     Args:
-        source_id: 源ID
-        
+        source_id: 源ID，可以是文本块ID、复合ID或社区ID
+    
     Returns:
-        Dict: 包含文件名等信息的字典
+        Dict: 包含文件信息的字典，结构为：
+            - file_name: 文件基本名称（不含路径）或描述性文本
+            - 处理失败时仍然返回一个包含基本描述的字典，确保调用方获得有效数据
     """
     try:
         if not source_id:
@@ -717,14 +752,21 @@ def get_source_file_info(source_id: str) -> dict:
 
 def get_chunks(limit: int = 10, offset: int = 0):
     """
-    获取数据库中的文本块
+    获取数据库中的文本块数据，支持分页查询
+    
+    该函数用于获取存储在数据库中的文本块数据，实现了分页机制以便高效处理大量文本数据。
+    文本块是知识图谱构建的基础数据源，通过该函数可以访问原始文本分块，支持系统进行文本浏览、
+    内容分析或知识提取等操作。
     
     Args:
-        limit: 返回数量限制
-        offset: 偏移量
-        
+        limit: 返回数量限制，控制每页返回的文本块数量，默认为10
+        offset: 偏移量，指定查询的起始位置，用于实现分页功能
+    
     Returns:
-        Dict: 文本块数据和总数
+        Dict: 文本块数据集合，结构为：
+            - chunks: 文本块列表，每个文本块包含id、fileName和text属性
+            - total: 返回的文本块总数
+            - 处理失败时返回错误信息和空列表
     """
     try:
         query = """
@@ -754,7 +796,27 @@ def get_chunks(limit: int = 10, offset: int = 0):
     
 
 def get_shortest_path(driver, entity_a, entity_b, max_hops=3):
-    """查询实体A和实体B之间的最短路径"""
+    """
+    查询两个实体之间的最短路径
+    
+    该函数实现了知识图谱中路径查找的核心功能，计算两个指定实体之间的最短连接路径。
+    这对于理解实体间的关联关系、发现隐式知识和解释推理过程非常重要。函数支持自定义最大跳数，
+    以平衡查询效率和路径完整性。
+    
+    Args:
+        driver: Neo4j数据库驱动实例，用于执行Cypher查询
+        entity_a: 起始实体ID
+        entity_b: 目标实体ID
+        max_hops: 最大跳数限制，默认为3，可根据需要调整路径深度
+    
+    Returns:
+        Dict: 最短路径信息，包含以下结构：
+            - nodes: 路径中的所有实体节点
+            - links: 路径中的所有关系连接
+            - path_info: 路径描述信息
+            - path_length: 路径长度（边的数量）
+            - 处理失败时返回错误信息和空路径
+    """
     try:
         # 根据max_hops构建相应的路径模式
         if max_hops == 1:
@@ -830,7 +892,24 @@ def get_shortest_path(driver, entity_a, entity_b, max_hops=3):
 
 def get_one_two_hop_paths(driver, entity_a, entity_b):
     """
-    获取实体A到实体B的一到两步关系路径
+    获取两个实体之间的一到两跳关系路径
+    
+    该函数专注于查找两个实体之间所有可能的短路径（长度为1或2），相比最短路径算法，
+    它能够发现更多潜在的直接或间接关联。这对于分析实体间的多重关系、发现知识图谱中的
+    密集连接区域非常有用，尤其适用于概念之间的关联分析。
+    
+    Args:
+        driver: Neo4j数据库驱动实例，用于执行Cypher查询
+        entity_a: 起始实体ID
+        entity_b: 目标实体ID
+    
+    Returns:
+        Dict: 路径信息集合，包含以下结构：
+            - nodes: 所有参与路径的实体节点
+            - links: 所有关系连接
+            - paths_info: 格式化的路径描述列表
+            - path_count: 发现的路径总数
+            - 处理失败时返回错误信息和空结果
     """
     try:
         query = """
@@ -919,7 +998,24 @@ def get_one_two_hop_paths(driver, entity_a, entity_b):
 
 def get_common_neighbors(driver, entity_a, entity_b):
     """
-    找出与实体A和实体B相关联的实体（共同邻居）
+    查找两个实体的共同邻居
+    
+    该函数用于发现同时与两个指定实体相关联的其他实体，这些共同邻居是理解实体间关联关系的重要线索。
+    共同邻居分析是知识图谱中发现隐式关联、预测潜在关系和进行知识推理的重要方法，尤其适用于
+    概念相似性分析和关系推荐场景。
+    
+    Args:
+        driver: Neo4j数据库驱动实例，用于执行Cypher查询
+        entity_a: 第一个实体ID
+        entity_b: 第二个实体ID
+    
+    Returns:
+        Dict: 共同邻居分析结果，包含以下结构：
+            - nodes: 包含两个目标实体和所有共同邻居的节点集合
+            - links: 连接关系集合
+            - common_neighbors: 共同邻居实体ID列表
+            - neighbor_count: 共同邻居数量
+            - 处理失败时返回错误信息和空结果
     """
     try:
         query = """
@@ -991,7 +1087,28 @@ def get_common_neighbors(driver, entity_a, entity_b):
         return {"nodes": [], "links": [], "error": str(e)}
 
 def get_all_paths(driver, entity_a, entity_b, max_depth=3):
-    """查询两个实体之间的所有路径（有深度限制）"""
+    """
+    查询两个实体之间的所有路径（有深度限制）
+    
+    该函数用于发现两个实体之间的所有可能连接路径，不同于最短路径算法，它会尝试找出所有符合深度要求的路径。
+    这对于全面分析实体间的复杂关系网络、发现知识图谱中的隐藏模式和进行深度知识探索非常有价值。
+    函数实现了实体存在性验证和查询深度控制，以平衡查询的完整性和效率。
+    
+    Args:
+        driver: Neo4j数据库驱动实例，用于执行Cypher查询
+        entity_a: 起始实体ID
+        entity_b: 目标实体ID
+        max_depth: 最大路径深度，默认为3，可根据需要调整
+    
+    Returns:
+        Dict: 路径分析结果，包含以下结构：
+            - nodes: 所有参与路径的实体节点
+            - links: 所有关系连接
+            - paths_info: 格式化的路径描述列表
+            - path_count: 发现的路径总数
+            - 实体不存在时返回相应错误信息
+            - 查询失败时返回错误信息和空结果
+    """
     try: 
         # 验证实体存在性
         check_query = """
@@ -1104,7 +1221,26 @@ def get_all_paths(driver, entity_a, entity_b, max_depth=3):
         return {"nodes": [], "links": [], "error": str(e)}
 
 def get_entity_cycles(driver, entity_id, max_depth=4):
-    """查找实体的环路"""
+    """
+    查找实体参与的环路关系
+    
+    该函数用于发现实体自身通过多步关系形成的环路结构，这对于识别知识图谱中的循环依赖、
+    发现概念体系中的递归定义和检测潜在的数据异常非常重要。环路分析有助于理解知识图谱
+    的拓扑结构和发现深层的关系模式。
+    
+    Args:
+        driver: Neo4j数据库驱动实例，用于执行Cypher查询
+        entity_id: 要分析的实体ID
+        max_depth: 最大环路深度，默认为4，控制环路的最大长度
+    
+    Returns:
+        Dict: 环路分析结果，包含以下结构：
+            - nodes: 参与环路的所有实体节点
+            - links: 所有关系连接
+            - cycles_info: 环路描述信息列表，每个环路包含描述和长度
+            - cycle_count: 发现的环路总数
+            - 查询失败时返回错误信息和空结果
+    """
     try:
         # 根据max_depth构建适当的路径模式
         if max_depth == 1:
@@ -1197,7 +1333,29 @@ def get_entity_cycles(driver, entity_id, max_depth=4):
         return {"nodes": [], "links": [], "error": str(e)}
 
 def get_entity_influence(driver, entity_id, max_depth=2):
-    """分析实体的影响范围"""
+    """
+    分析实体在知识图谱中的影响范围
+    
+    该函数实现了实体影响力分析功能，通过计算实体在知识图谱中的连接广度、关系类型分布等指标，
+    评估实体的重要性和影响范围。这对于识别知识图谱中的核心概念、发现关键节点和进行知识结构分析
+    非常有价值，支持系统进行智能推荐和重点关注。
+    
+    Args:
+        driver: Neo4j数据库驱动实例，用于执行Cypher查询
+        entity_id: 要分析的实体ID
+        max_depth: 分析的最大深度，默认为2，控制影响力分析的广度
+    
+    Returns:
+        Dict: 影响力分析结果，包含以下结构：
+            - nodes: 实体及其邻居节点集合，按层级分组
+            - links: 所有关系连接
+            - influence_stats: 影响力统计信息，包含：
+                - direct_connections: 直接连接数量
+                - total_connections: 总连接数量
+                - connection_types: 关系类型分布
+                - relation_distribution: 关系分布详细数据
+            - 查询失败时返回错误信息和空结果
+    """
     try:
         # 根据max_depth构建路径模式
         if max_depth == 1:
@@ -1307,7 +1465,28 @@ def get_entity_influence(driver, entity_id, max_depth=2):
         return {"nodes": [], "links": [], "error": str(e)}
 
 def get_simplified_community(driver, entity_id, max_depth=2):
-    """使用简化的方法获取实体所属社区"""
+    """
+    使用简化的社区检测方法获取实体所属的知识社区
+    
+    该函数实现了基于连通分量的社区检测算法，用于识别知识图谱中紧密连接的实体群组，
+    并确定特定实体所属的社区。社区分析对于理解知识图谱的结构组织、发现主题聚类和
+    进行知识分区非常重要，支持系统进行更有针对性的知识检索和分析。
+    
+    Args:
+        driver: Neo4j数据库驱动实例，用于执行Cypher查询
+        entity_id: 要分析的实体ID
+        max_depth: 社区检测的最大深度，默认为2，控制社区范围
+    
+    Returns:
+        Dict: 社区分析结果，包含以下结构：
+            - nodes: 社区中的实体节点，包含社区属性
+            - links: 社区内的关系连接
+            - communities: 社区统计信息列表，每个社区包含ID、大小、密度等信息
+            - community_count: 检测到的社区总数
+            - entity_community: 目标实体所属的社区ID
+            - 实体不存在时返回相应错误信息
+            - 查询失败时返回错误信息和空结果
+    """
     try:
         # 验证实体存在性
         check_query = """
