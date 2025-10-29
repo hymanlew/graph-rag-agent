@@ -4,25 +4,18 @@ import pandas as pd
 from neo4j import GraphDatabase, Result  # 导入Neo4j官方驱动
 from langchain_neo4j import Neo4jGraph  # 导入LangChain的Neo4j集成
 from dotenv import load_dotenv  # 用于加载环境变量
+from pandas import DataFrame
 
 
 class DBConnectionManager:
     """
-    数据库连接管理器，实现单例模式
-    
-    这是系统与Neo4j图数据库交互的核心组件，负责管理所有数据库连接资源。
+    Neo4j图数据库连接管理器，实现单例模式，负责管理所有数据库连接资源。
     
     核心设计原则：
     1. 单例模式：确保整个应用中只有一个数据库连接管理器实例
     2. 会话池管理：通过复用会话减少连接创建和销毁的开销
     3. 双重接口：同时提供原生Neo4j驱动和LangChain Neo4jGraph接口
     4. 资源自动管理：支持上下文管理器模式，确保资源正确释放
-    
-    主要功能：
-    - 数据库连接的创建和维护
-    - 会话池的管理和优化
-    - Cypher查询执行和结果处理
-    - 与LangChain生态的无缝集成
     """
     
     # 单例实例存储 - 类变量，用于保存唯一的实例引用
@@ -30,20 +23,14 @@ class DBConnectionManager:
     
     def __new__(cls):
         """
-        单例模式实现，确保只创建一个连接管理器实例
-        
-        通过重写__new__方法实现单例模式，这是创建实例的第一步。
+        通过重写__new__方法实现单例模式，确保只创建一个连接管理器实例。
         单例模式确保系统中只存在一个数据库连接管理器，
-        避免创建过多连接导致的资源浪费和性能问题。
-        
-        实现细节：
-        - 首次调用时创建新实例并标记为未初始化
-        - 后续调用直接返回已存在的实例
-        - 使用类变量而非实例变量存储单例引用
+        __new__方法在__init__之前被调用。
         """
         if cls._instance is None:
-            # 创建新实例
-            cls._instance = super(DBConnectionManager, cls).__new__(cls)
+            # 创建新实例，获取父类（默认是object）的__new__方法，然后调用它并传入当前类cls来创建一个实例。这个实例就是一个实例对象
+            # cls._instance = super(DBConnectionManager, cls).__new__(cls) 这个是旧写法，会有继承性问题
+            cls._instance = super().__new__(cls)
             # 标记实例尚未初始化 - 延迟初始化模式
             cls._instance._initialized = False
         return cls._instance
@@ -78,8 +65,7 @@ class DBConnectionManager:
         self.neo4j_username = os.getenv('NEO4J_USERNAME')  # 用户名
         self.neo4j_password = os.getenv('NEO4J_PASSWORD')  # 密码
         
-        # 初始化Neo4j驱动，用于执行原始Cypher查询
-        # 驱动是与数据库通信的核心组件，管理底层连接池和事务
+        # 初始化Neo4j官方驱动，用于执行原始Cypher查询
         self.driver = GraphDatabase.driver(
             self.neo4j_uri,
             auth=(self.neo4j_username, self.neo4j_password)
@@ -104,44 +90,23 @@ class DBConnectionManager:
         self._initialized = True
     
     def get_driver(self):
-        """
-        获取Neo4j驱动实例
-        
-        提供访问底层Neo4j驱动的接口，
-        可用于执行需要低级API的操作。
-        
-        Returns:
-            neo4j.Driver: Neo4j驱动实例，可用于执行底层操作
-        """
+        """获取Neo4j官方驱动实例"""
         return self.driver
     
     def get_graph(self):
-        """
-        获取LangChain Neo4j图实例
-        
-        提供与LangChain集成的图数据库接口，
-        便于在LangChain工作流中使用图数据库功能。
-        
-        Returns:
-            langchain_neo4j.Neo4jGraph: LangChain Neo4j图实例，便于使用LangChain功能
-        """
+        """获取LangChain Neo4j图实例"""
         return self.graph
     
-    def execute_query(self, cypher: str, params: Dict[str, Any] = {}) -> pd.DataFrame:
+    def execute_query(self, cypher: str, params: Dict[str, Any] | None = None) -> pd.DataFrame:
         """
         执行Cypher查询并返回结果
-        
-        提供执行Cypher查询的高级接口，封装了底层驱动的复杂性，
-        并自动将结果转换为pandas DataFrame，方便数据处理和分析。
-        
-        设计亮点：
         1. 参数化查询：通过params参数支持参数化查询，防止SQL注入
         2. 结果转换：自动将Neo4j结果转换为DataFrame，简化数据处理
         3. 异常传递：保持底层异常传递，便于上层处理特定错误
         
         Args:
             cypher: Cypher查询语句，Neo4j的图数据库查询语言
-            params: 查询参数字典，用于参数化查询，避免注入风险
+            params: 查询参数字典（cypher 中的 params），用于参数化查询，避免注入风险
             
         Returns:
             pd.DataFrame: 查询结果DataFrame，便于后续数据处理和分析
@@ -151,15 +116,13 @@ class DBConnectionManager:
         return self.driver.execute_query(
             cypher,
             parameters_=params,
-            result_transformer_=Result.to_df  # 将结果转换为DataFrame
+            database_="neo4j",
+            # result_transformer_=Result.to_df  # 将结果转换为DataFrame
         )
     
     def get_session(self):
         """
-        从连接池获取会话
-        
-        实现了自定义会话池管理机制，在Neo4j驱动的连接池之上提供更细粒度的控制。
-        会话池的设计旨在减少频繁创建和销毁会话的开销，提高并发性能。
+        从连接池获取会话，实现了自定义会话池管理机制，在Neo4j驱动的连接池之上提供更细粒度的控制。
         
         实现策略：
         1. 优先复用：首先尝试从池中获取现有会话
@@ -181,10 +144,7 @@ class DBConnectionManager:
     def release_session(self, session):
         """
         释放会话回连接池
-        
-        会话池管理的重要组成部分，确保会话资源正确复用或释放。
-        实现了资源上限控制，防止连接泄漏和资源耗尽。
-        
+
         资源管理策略：
         1. 复用优先：当池未满时，将会话返回池中供后续复用
         2. 资源释放：当池已满时，直接关闭会话释放资源
@@ -204,11 +164,8 @@ class DBConnectionManager:
     
     def close(self):
         """
-        关闭所有资源，实现完整的资源生命周期管理
-        
-        此方法负责彻底清理与数据库连接相关的所有资源，
-        采用了防御性编程方法确保资源释放的可靠性。
-        
+        关闭所有资源（彻底清理），实现完整的资源生命周期管理
+
         资源清理策略：
         1. 会话池清理：关闭并释放所有池化会话
         2. 错误处理：捕获并忽略关闭过程中的异常，确保清理过程继续

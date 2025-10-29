@@ -80,51 +80,6 @@ pip install -e .
 
 ## 知识图谱配置（`config/settings.py`）
 
-```python
-# 基础设置
-theme = "悟空传"
-entity_types = ["人物", "妖怪", "位置"]
-relationship_types = ["师徒", "师兄弟", "对抗", "对话", "态度", "故事地点", "其它"]
-
-# 增量更新设置：冲突解决策略（新文件和手动编辑neo4j之间的冲突），可以是 "manual_first"（优先保留手动编辑），"auto_first"（优先自动更新）或 "merge"（尝试合并）
-conflict_strategy="manual_first"
-
-# 图谱参数
-similarity_threshold = 0.9
-community_algorithm = 'leiden'  # 可选：sllpa 或 leiden
-
-# 文本分块参数
-CHUNK_SIZE = 300
-OVERLAP = 50
-MAX_TEXT_LENGTH = 500000 # 最大处理段长
-
-# 回答方式
-response_type = "多个段落"
-
-# Agent 工具描述
-lc_description = "用于需要具体细节的查询，例如《悟空传》中的对话、场景描写等。"
-gl_description = "用于宏观总结和分析，如人物关系、主题发展等。"
-naive_description = "基础检索工具，返回最相关的原文段落。"
-
-# 性能优化参数
-# 并行处理配置
-MAX_WORKERS = 4                # 并行工作线程数
-BATCH_SIZE = 100               # 批处理大小
-ENTITY_BATCH_SIZE = 50         # 实体处理批次大小
-CHUNK_BATCH_SIZE = 100         # 文本块处理批次大小
-EMBEDDING_BATCH_SIZE = 64      # 嵌入向量计算批次大小
-LLM_BATCH_SIZE = 5             # LLM处理批次大小
-
-# GDS相关配置
-GDS_MEMORY_LIMIT = 6           # GDS内存限制(GB)
-GDS_CONCURRENCY = 4            # GDS并发度
-GDS_NODE_COUNT_LIMIT = 50000   # GDS节点数量限制
-GDS_TIMEOUT_SECONDS = 300      # GDS超时时间(秒)
-
-# 索引和社区检测配置
-COMMUNITY_BATCH_SIZE = 50      # 社区处理批次大小
-```
-
 ## 构建知识图谱
 
 ```bash

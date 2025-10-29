@@ -23,7 +23,7 @@ from fastapi import FastAPI
 from routers import api_router
 from server_config.database import get_db_manager
 from services.agent_service import agent_manager
-from config.settings import workers
+from config.settings import fastapi_workers
 
 # 初始化 FastAPI 应用
 # 创建FastAPI实例，设置应用标题和描述，提供API文档自动生成功能
@@ -79,4 +79,4 @@ def shutdown_event():
 # 配置端口为8000（标准Web服务端口）
 # 配置工作进程数，从settings导入，支持水平扩展
 if __name__ == "__main__":
-    uvicorn.run("main:app", host="0.0.0.0", port=8000, workers=workers)
+    uvicorn.run("main:app", host="0.0.0.0", port=8000, workers=fastapi_workers)

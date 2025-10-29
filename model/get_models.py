@@ -36,7 +36,6 @@ def setup_cache():
     # 设置环境变量，告诉tiktoken使用指定缓存目录
     os.environ["TIKTOKEN_CACHE_DIR"] = str(cache_dir)
 
-
 # 初始化调用缓存设置函数
 setup_cache()
 
@@ -44,22 +43,7 @@ setup_cache()
 load_dotenv()
 
 def get_embeddings_model():
-    """
-    获取OpenAI嵌入模型实例
-    
-    返回：
-        OpenAIEmbeddings: 配置好的嵌入模型实例
-        
-    实现思路：
-    - 从环境变量中读取模型配置参数
-    - 初始化并返回OpenAIEmbeddings实例
-    - 使用环境变量配置实现灵活的模型切换
-    
-    功能说明：
-    - 此模型用于将文本转换为向量表示
-    - 主要用于构建向量索引和相似度搜索
-    - 支持通过环境变量自定义模型类型、API密钥和基础URL
-    """
+    """获取OpenAI嵌入模型实例"""
     # 初始化嵌入模型实例，从环境变量读取配置
     model = OpenAIEmbeddings(
         model=os.getenv('OPENAI_EMBEDDINGS_MODEL'),  # 嵌入模型名称
@@ -68,25 +52,8 @@ def get_embeddings_model():
     )
     return model
 
-
 def get_llm_model():
-    """
-    获取OpenAI聊天语言模型实例
-    
-    返回：
-        ChatOpenAI: 配置好的聊天语言模型实例
-        
-    实现思路：
-    - 从环境变量读取模型配置和生成参数
-    - 初始化并返回ChatOpenAI实例
-    - 提供统一的模型访问接口
-    
-    功能说明：
-    - 此模型用于生成文本回复和处理复杂查询
-    - 用于图知识库问答、实体关系提取等核心功能
-    - 通过环境变量配置实现模型参数的灵活调整
-    """
-    # 初始化聊天语言模型实例，从环境变量读取配置
+    """获取OpenAI聊天语言模型实例"""
     model = ChatOpenAI(
         model=os.getenv('OPENAI_LLM_MODEL'),  # 语言模型名称
         temperature=os.getenv('TEMPERATURE'),  # 生成温度，控制输出随机性
@@ -102,17 +69,43 @@ def get_stream_llm_model():
     
     返回：
         ChatOpenAI: 配置好的流式输出聊天语言模型实例
-        
-    实现思路：
-    - 创建异步迭代器回调处理器
-    - 将回调处理器注册到异步回调管理器中
-    - 初始化支持流式输出的ChatOpenAI实例
-    - 设置streaming=True启用流式输出功能
-    
-    功能说明：
-    - 提供流式文本生成，用于实现实时响应
-    - 增强用户体验，避免长时间等待完整回复
-    - 适用于需要实时显示生成结果的场景
+
+    创建异步迭代器回调处理器，并将回调处理器注册到异步回调管理器中
+    回调管理器允许你在LLM生成过程中的不同阶段（如开始、新token生成、结束等）插入自定义的逻辑。用于监控和控制模型调用过程。
+    例如可以使用回调函数来记录日志、计算token使用量、实时将生成的token发送到前端等。
+
+    - 流式输出与回调处理器，在处理流式响应时经常一起使用。例如当流式输出时，可以通过回调函数来实时处理每一个新生成的token。
+      - on_llm_start：当LLM开始生成时触发。
+      - on_llm_new_token：当每个新token生成时触发（在流式模式下特别有用）。
+      - on_llm_end：当LLM生成结束时触发。
+
+    虽然使用 model.astream 确实是更直接和简洁的方式。但回调器提供了更细粒度的控制，可以在不同的阶段（如开始、令牌生成、结束）插入自定义逻辑。
+    async def stream_example():
+        messages = [HumanMessage(content="请介绍一下人工智能")]
+        async for chunk in model.astream(messages):
+            print(chunk.content, end="", flush=True)
+
+    # 创建一个任务来运行模型生成
+    task = asyncio.create_task(model.agenerate([messages]))
+    # 从回调处理器中读取令牌
+    async for token in callback_handler.aiter():
+        print(token, end="", flush=True)
+    # 等待任务完成
+    await task
+
+    # 多层级监控
+    class AnalysisCallbackHandler(AsyncIteratorCallbackHandler):
+        async def on_llm_start(self, serialized, prompts, **kwargs):
+            print(f"开始处理请求，提示词: {prompts[0][:50]}...")
+
+        async def on_llm_new_token(self, token: str, **kwargs):
+            # 不只是输出，还可以分析
+            if len(token.strip()) > 0:
+                print(f"生成token: '{token}' (长度: {len(token)})")
+
+        async def on_llm_end(self, response, **kwargs):
+            usage = response.llm_output.get('token_usage', {})
+            print(f"生成完成，总token数: {usage.get('total_tokens', '未知')}")
     """
     # 创建异步迭代器回调处理器，用于处理流式输出
     callback_handler = AsyncIteratorCallbackHandler()
@@ -146,12 +139,7 @@ def count_tokens(text):
     2. 对于DeepSeek模型使用transformers库的AutoTokenizer
     3. 对于GPT模型使用tiktoken库
     4. 提供基于字符统计的备用方案
-    
-    性能优化：
-    - 使用try-except结构确保代码健壮性
-    - 按优先级尝试不同的计数方法
-    - 空文本直接返回0，避免不必要计算
-    
+
     业务意义：
     - 确保输入文本符合模型token限制
     - 帮助控制API调用成本
@@ -191,17 +179,6 @@ def count_tokens(text):
     return chinese + english // 4
 
 if __name__ == '__main__':
-    """
-    主函数：测试模型功能
-    
-    功能：
-    - 测试语言模型的基本功能
-    - 测试嵌入模型的向量生成
-    - 测试token计数功能
-    
-    注意事项：
-    - 流式模型测试因langchain版本问题暂时注释
-    """
     # 测试语言模型功能
     print("测试语言模型...")
     llm = get_llm_model()

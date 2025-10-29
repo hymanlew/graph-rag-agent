@@ -150,6 +150,7 @@ async def convert_and_add_to_graph(transformer, docs, graph, file_name, file_has
     all_graph_documents = []
     total_docs = len(docs)
     for i, doc in enumerate(docs):
+        # LLMGraphTransformer + Neo4jGraph
         graph_doc = await asyncio.to_thread(transformer.convert_to_graph_documents, [doc])
         all_graph_documents.extend(graph_doc)
         print(f"处理进度: {(i + 1)}/{total_docs}")
