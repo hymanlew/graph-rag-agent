@@ -149,9 +149,7 @@ class KnowledgeGraphBuilder:
         self.performance_stats["初始化"] = time.time() - init_start
 
     def _display_stage_header(self, title: str):
-        """显示处理阶段的标题
-        
-        以醒目的格式显示当前处理阶段的标题，帮助用户跟踪处理进度和了解当前执行的任务。
+        """显示处理阶段的标题，以醒目的格式显示当前处理阶段的标题。
         
         Args:
             title: 要显示的阶段标题文本
@@ -160,9 +158,7 @@ class KnowledgeGraphBuilder:
         self.console.print(f"\n[bold cyan]{title}[/bold cyan]")
 
     def _display_results_table(self, title: str, data: Dict[str, Any]):
-        """显示结果表格
-        
-        创建并显示一个格式化的表格，用于清晰展示各种统计数据和处理结果。
+        """显示结果表格，创建并显示一个格式化的表格，用于清晰展示各种统计数据和处理结果。
         
         Args:
             title: 表格标题
@@ -183,7 +179,6 @@ class KnowledgeGraphBuilder:
         
     def _format_time(self, seconds: float) -> str:
         """格式化时间为小时:分钟:秒.毫秒
-        
         将秒数转换为易读的时间格式：HH:MM:SS.XXX，用于显示处理耗时。
         
         Args:
@@ -258,13 +253,12 @@ class KnowledgeGraphBuilder:
             self.console.print(f"[blue]共生成 {total_chunks} 个文本块，平均每块 {avg_chunk_size:.1f} 字符[/blue]")
             
             # 3. 构建图结构
-            # 这一步创建基础知识图谱的框架，包括文档节点和文本块节点及其关系
+            # 这一步创建基础知识图谱的框架（写入图数据库），包括文档节点和文本块节点及其关系
             struct_start = time.time()  # 记录图结构构建开始时间
             with self._create_progress() as progress:
                 task = progress.add_task("[cyan]构建图结构...", total=3)
                 
                 # 步骤1: 清空数据库并创建Document节点
-                # 清空操作确保每次构建都是从干净的状态开始
                 self.struct_builder.clear_database()
                 # 为每个成功分块的文档创建Document节点
                 for doc in self.processed_documents:
@@ -277,14 +271,12 @@ class KnowledgeGraphBuilder:
                         )
                 progress.advance(task)  # 更新进度条到33%
                 
-                # 步骤2: 创建Chunk节点和关系
-                # 采用优化策略：根据文档大小选择不同的处理方法
+                # 步骤2: 创建Chunk节点和关系，优化策略：根据文档大小选择不同的处理方法
                 for doc in self.processed_documents:
                     if "chunks" in doc and doc["chunks"]:  # 只处理成功分块的文档
                         chunks = doc["chunks"]
                         # 性能优化：对于大块数的文档使用并行处理
                         if doc.get("chunk_count", 0) > 100:
-                            # 对于大文件使用并行处理，提高处理速度
                             result = self.struct_builder.parallel_process_chunks(
                                 doc["filename"],  # 文件名，用于关联
                                 chunks,           # 文本块列表
@@ -305,7 +297,7 @@ class KnowledgeGraphBuilder:
             self.performance_stats["图结构构建"] = time.time() - struct_start
             
             # 4. 提取实体和关系
-            # 这是知识图谱构建的核心步骤，使用LLM从文本中提取结构化知识
+            # 这是知识图谱构建的核心步骤，使用LLM从文本中提取结构，实体与关系知识（缓存到文件中）
             extract_start = time.time()  # 记录实体关系提取开始时间
             with self._create_progress() as progress:
                 # 计算总文本块数量，用于进度显示
@@ -340,7 +332,6 @@ class KnowledgeGraphBuilder:
                         progress_callback
                     )
                 
-                # 将处理结果合并回文档数据结构中
                 # 创建文件名到实体数据的映射，提高查找效率
                 file_content_map = {}
                 for processed_file in processed_file_contents:
@@ -465,10 +456,7 @@ class KnowledgeGraphBuilder:
             raise
 
     def process(self):
-        """执行知识图谱构建流程
-        
-        主流程入口，协调整个知识图谱构建过程。记录系统资源信息，
-        显示开始和结束面板，调用基础图谱构建方法，并处理可能出现的异常。
+        """执行知识图谱构建流程，记录系统资源信息，显示开始和结束面板，调用基础图谱构建方法，并处理可能出现的异常。
         无论成功或失败，都会显示总耗时信息。
         
         Returns:

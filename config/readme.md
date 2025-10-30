@@ -26,13 +26,6 @@
 - 提供上下文管理器接口，确保资源的自动释放
 - 集成Neo4j原生驱动和LangChain Neo4j图实例，支持多种查询方式
 
-```python
-# 使用示例
-db_manager = get_db_manager()
-with db_manager as manager:
-    result = manager.execute_query("MATCH (n) RETURN count(n) as count")
-```
-
 ### 2. 提示模板系统 (prompt.py)
 
 `prompt.py` 定义了一系列用于知识图谱构建和查询的提示模板：

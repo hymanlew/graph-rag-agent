@@ -27,7 +27,7 @@ class GraphConnectionManager:
         # 检查实例是否已存在
         if cls._instance is None:
             # 如果实例不存在，则创建新实例
-            cls._instance = super(GraphConnectionManager, cls).__new__(cls)
+            cls._instance = super().__new__(cls)
             # 标记实例尚未初始化
             cls._instance._initialized = False
         # 返回已有实例（或新创建的实例）
@@ -35,31 +35,19 @@ class GraphConnectionManager:
     
     def __init__(self):
         """
-        初始化连接管理器，只在第一次创建时执行
-        
-        使用_initialized标志确保初始化代码只执行一次，
-        获取数据库管理器并从中获取图数据库连接。
-        这种设计确保单例模式下的初始化代码不会重复执行。
+        初始化连接管理器，只在第一次创建时执行。
+        使用_initialized标志确保初始化代码只执行一次，获取数据库管理器并从中获取图数据库连接。
         """
         # 检查是否已初始化
         if not getattr(self, "_initialized", False):
-            # 获取数据库管理器 - 从配置模块获取
-            db_manager = get_db_manager()
             # 从数据库管理器获取图数据库连接
-            self.graph = db_manager.graph
+            self.graph = get_db_manager().graph
             # 标记为已初始化
             self._initialized = True
     
     def get_connection(self):
         """
-        获取图数据库连接
-        
-        提供统一的获取图数据库连接的接口，
-        确保应用中的其他组件能够方便地访问图数据库。
-        这种方式封装了连接获取逻辑，便于管理和维护。
-        
-        Returns:
-            langchain_neo4j.Neo4jGraph: 连接到Neo4j数据库的LangChain图对象
+        获取图数据库连接，Returns: langchain_neo4j.Neo4jGraph
         """
         return self.graph
     
@@ -75,11 +63,7 @@ class GraphConnectionManager:
     
     def execute_query(self, query: str, params: Optional[dict] = None) -> Any:
         """
-        执行图数据库查询
-        
-        提供一个统一的接口来执行Cypher查询，
-        支持参数化查询以提高安全性和性能，避免SQL注入攻击。
-        这是与图数据库交互的主要方法。
+        执行图数据库查询，支持参数化查询以提高安全性和性能，避免SQL注入攻击。
         
         Args:
             query: Cypher查询语句，Neo4j的查询语言
@@ -95,10 +79,7 @@ class GraphConnectionManager:
     def create_index(self, index_query: str) -> None:
         """
         创建索引
-        
-        执行索引创建查询，为图数据库中的特定属性创建索引，
-        从而提高查询性能。索引对于大型图数据库的查询效率至关重要。
-        
+
         Args:
             index_query: 索引创建查询语句，例如：
                         "CREATE INDEX FOR (n:Entity) ON (n.name)"
@@ -108,13 +89,7 @@ class GraphConnectionManager:
         
     def create_multiple_indexes(self, index_queries: list) -> None:
         """
-        创建多个索引
-        
-        批量创建多个索引，适用于初始化数据库或需要创建多个索引的场景。
-        例如在应用启动时，为常用查询路径上的属性创建索引。
-        
-        Args:
-            index_queries: 索引创建查询列表，每个元素为一个索引创建语句
+        创建多个索引，index_queries: 索引创建查询列表，每个元素为一个索引创建语句
         """
         # 逐个执行索引创建查询
         for query in index_queries:
@@ -123,10 +98,7 @@ class GraphConnectionManager:
     def drop_index(self, index_name: str) -> None:
         """
         删除索引
-        
-        安全地删除指定名称的索引，使用IF EXISTS确保即使索引不存在也不会报错。
-        当索引不再需要或需要重建时使用此方法。
-        
+
         Args:
             index_name: 要删除的索引名称
         """

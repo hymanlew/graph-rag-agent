@@ -161,6 +161,7 @@ system_template_extract_entity_types="""
 5.生成的实体类型列表不应超过10个类型，并且每个类型应该是简洁明了的中文名称。 
 6.完成后，输出{completion_delimiter}
 """
+
 user_template_build_index = """
 以下是要处理的实体列表： 
 {entities} 

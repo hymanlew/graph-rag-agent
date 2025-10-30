@@ -1,28 +1,3 @@
-"""
-Graph-RAG Agent 图数据写入模块
-
-此模块实现了知识图谱系统中的图数据写入功能，负责将提取的实体和关系写入Neo4j图数据库。
-
-主要功能包括：
-
-1. 数据转换与解析
-   - 将提取的实体关系文本转换为GraphDocument对象
-   - 高效解析节点和关系信息
-   - 处理节点缓存以减少重复创建
-
-2. 批量处理优化
-   - 并行处理多批次数据
-   - 动态调整批次大小
-   - 错误恢复和降级处理
-
-3. 图数据管理
-   - 批量写入图文档
-   - 合并Chunk和Document节点关系
-   - 优化的节点和关系创建策略
-
-该模块是Graph-RAG系统中负责将提取的实体关系数据持久化到图数据库的关键组件。
-"""
-
 import re
 import concurrent.futures
 from typing import List, Set
@@ -39,9 +14,13 @@ class GraphWriter:
     
     功能：
     - 将提取的实体和关系数据写入Neo4j图数据库
-    - 高效处理实体和关系的解析与转换
+    - 高效处理实体和关系的解析与转换，转换为 GraphDocument 对象
     - 实现节点缓存和批量处理优化
-    - 管理Chunk与Document节点的关系合并
+        - 并行处理多批次数据
+        - 动态调整批次大小
+        - 错误恢复和降级处理
+    - 管理 Chunk 与 Document 节点的关系合并
+    - 批量写入图文档
     
     实现思路：
     - 使用正则表达式解析实体关系文本
@@ -49,7 +28,6 @@ class GraphWriter:
     - 实现并行处理和动态批处理策略
     - 提供错误处理和降级机制确保数据写入稳定性
     """
-    
     def __init__(self, graph: Neo4jGraph = None, batch_size: int = 50, max_workers: int = 4):
         """
         初始化图写入器
@@ -83,22 +61,15 @@ class GraphWriter:
             
         返回：
             GraphDocument: 转换后的图文档对象，包含节点和关系信息
-        
-        实现特点：
-        - 使用正则表达式高效解析实体和关系信息
-        - 实现节点缓存机制，避免重复创建相同节点
-        - 处理关系引用但节点未定义的情况
-        - 完整的错误处理，确保即使解析失败也能返回有效对象
         """
         # 定义正则表达式模式，用于匹配实体和关系信息
         node_pattern = re.compile(r'\("entity" : "(.+?)" : "(.+?)" : "(.+?)"\)')
         relationship_pattern = re.compile(r'\("relationship" : "(.+?)" : "(.+?)" : "(.+?)" : "(.+?)" : (.+?)\)')
 
-        # 存储解析出的节点和关系
+        # 存储解析出的节点和关系，实现节点缓存机制，避免重复创建相同节点
         nodes = {}
         relationships = []
 
-        # 使用高效的正则匹配处理
         try:
             # 解析节点 - 使用缓存提高效率
             for match in node_pattern.findall(result):
@@ -269,7 +240,7 @@ class GraphWriter:
     
     def _batch_write_graph_documents(self, documents: List[GraphDocument]) -> None:
         """
-        批量写入图文档到Neo4j数据库
+        批量写入图文档到Neo4j数据库，所有文件的GraphDocument对象（所有文本块数据）
         
         参数：
             documents: 待写入的图文档列表
@@ -323,12 +294,6 @@ class GraphWriter:
         参数：
             chunk_ids: 需要合并关系的Chunk ID列表
         
-        实现流程：
-        1. 去除重复的Chunk ID以减少操作数量
-        2. 动态计算最优批处理大小
-        3. 分批执行关系合并操作
-        4. 提供批量处理失败时的降级方案
-        
         功能说明：
         - 将Document节点的MENTIONS关系转移到对应的Chunk节点
         - 保留关系的所有属性
@@ -355,10 +320,12 @@ class GraphWriter:
             batch_data = [{"chunk_id": chunk_id} for chunk_id in batch_chunk_ids]
             
             try:
-                # 使用Cypher查询批量合并关系
+                # 不需要保留，因为 d 不是自己创建的文档，标签不同（__Document__）
+                # graph.add_graph_documents 创建 Document 标签，因为标签是区分大小写且需要完全匹配的
+                # e是通过关系r从Document节点d连接到的任意节点（可能是各种实体节点），r是d和e之间的MENTIONS关系
                 merge_query = """
                     UNWIND $batch_data AS data
-                    MATCH (c:`__Chunk__` {id: data.chunk_id}), (d:Document{chunk_id:data.chunk_id})
+                    MATCH (c:`__Chunk__` {id: data.chunk_id}), (d:Document {chunk_id:data.chunk_id})
                     WITH c, d
                     MATCH (d)-[r:MENTIONS]->(e)
                     MERGE (c)-[newR:MENTIONS]->(e)

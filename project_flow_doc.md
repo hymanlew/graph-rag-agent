@@ -48,24 +48,241 @@ flowchart TD
 - 知识图谱配置：知识图谱主题，实体类型，关系类型定义，知识增量更新策略，文本处理配置，社区检测算法
 - 搜索模块配置：搜索返回的顶级实体数量，关系数量，文本块数量，社区数量
 
-### 3.1 服务器初始化流程
+### 3.1 知识图谱构建
 
-#### 知识图谱构建
+#### 相关模型初始化
 
-- build/main.py - KnowledgeGraphBuilder
+build/main.py - KnowledgeGraphBuilder
 
-  - 初始化LLM模型和嵌入模型，ChatOpenAI，OpenAIEmbeddings
+- 初始化LLM模型和嵌入模型，ChatOpenAI，OpenAIEmbeddings
 
-  - 初始化图数据库，GraphDatabase（官方），Neo4jGraph（langchain）
+- 初始化图数据库，GraphDatabase（官方），Neo4jGraph（langchain）
 
-  - ```python
-    database.execute_query(cypher, parameters_={"params": "abc"})
-    graph.query(cypher, params={"names": name})
-    ```
+  ```python
+  database.execute_query(cypher, parameters_={"params": "abc"})
+  graph.query(cypher, params={"names": name})
+  
+  # 使用 with 语句 + __enter__ 和 __exit__ 方法，实现资源上下文管理
+  # 刷新数据库模式以确保最新的节点标签和关系类型可用
+  graph.refresh_schema()
+  ```
 
-    
+- 初始化文档处理器、图结构构建器、实体关系提取器
+
+#### 配置文档处理器
+
+- 识别各类型文件，并使用各种 loader / reader 三方库读取文件
+- 文档分块拆分，先回车段落拆分，再标点符号拆分，再固定长度拆分
+- 使用 HanLP 中文分词器分词（使用 Coarse-Electra-Small-ZH 模型，平衡速度和准确性）
+- 最终返回，分割后的文本块列表，每个块是 token 列表（字词列表）
+
+#### 图结构构建器
+
+- 插入文档节点，创建或更新 Document 节点（文件名，文件路径，文件分类）
+
+  ```cypher
+  MERGE(d:`__Document__` {fileName: $file_name}) 
+  SET d.type=$type, d.uri=$uri, d.domain=$domain
+  RETURN d;
+  ```
+
+- 插入文本块 Chunk，创建文本块节点，并建立文档与文本块之间的 PART_OF 关系
+
+  ```python
+  # 将大数据量 chunks 分割成多个批次，然后依次对每个批次进行插入（使用线线池）
+  for i in range(0, len(chunks), batch_size):
+      chunk_batches.append(chunks[i:i+batch_size])
+  
+  with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
+      # 提交所有批次任务
+      future_to_batch = {
+          executor.submit(process_chunk_batch, batch, i * batch_size): i
+          for i, batch in enumerate(chunk_batches)
+      }
+  
+  # 创建metadata和Document对象，便于后续处理
+  metadata = {
+      "position": position,
+      "length": len(page_content),  # 文本长度
+      "content_offset": offset,    # 在原始文档中的偏移量
+      "tokens": len(chunk)        # 令牌数量
+  }
+  chunk_document = Document(page_content=page_content, metadata=metadata)
+  # 准备批处理数据
+  chunk_data = {
+      "id": current_chunk_id,
+      "pg_content": chunk_document.page_content,
+      "position": position,
+      "length": chunk_document.metadata["length"],
+      "f_name": file_name,
+      "previous_id": previous_chunk_id,
+      "content_offset": offset,
+      "tokens": len(chunk)
+  }
+  batch_data.append(chunk_data)
+  
+  # 第一个块与文档建立FIRST_CHUNK关系
+  relationships.append({"type": "FIRST_CHUNK", "chunk_id": current_chunk_id})
+  # 非第一个块与前一个块建立NEXT_CHUNK关系
+  relationships.append({
+      "type": "NEXT_CHUNK",
+      "previous_chunk_id": previous_chunk_id,
+      "current_chunk_id": current_chunk_id
+  })
+  ```
+
+- 维护文本块之间的顺序 NEXT_CHUNK 关系
+
+  ```cypher
+  // 第一阶段：创建 Chunk 节点并建立 PART_OF 关系
+  chunks_and_part_of = """
+  UNWIND $batch_data AS data
+  MERGE (c:`__Chunk__` {id: data.id})
+  SET c.text = data.pg_content, 
+      c.position = data.position, 
+      c.fileName = data.f_name,
+      c.content_offset = data.content_offset, 
+  WITH c, data
+  MATCH (d:`__Document__` {fileName: data.f_name})
+  MERGE (c)-[:PART_OF]->(d)
+  """
+  graph.query(chunks_and_part_of, params={"batch_data": batch_data})
+  
+  // 第二阶段：处理FIRST_CHUNK关系（文档到第一个块的关系）
+  query_first_chunk = """
+  UNWIND $relationships AS relationship
+  MATCH (d:`__Document__` {fileName: $f_name})
+  MATCH (c:`__Chunk__` {id: relationship.chunk_id})
+  MERGE (d)-[:FIRST_CHUNK]->(c)
+  """
+  graph.query(query_first_chunk, params={"f_name": file_name, "relationships": first_relationships})
+  
+  // 第三阶段：处理NEXT_CHUNK关系（块之间的顺序关系）
+  query_next_chunk = """
+  UNWIND $relationships AS relationship
+  MATCH (c:`__Chunk__` {id: relationship.current_chunk_id})
+  MATCH (pc:`__Chunk__` {id: relationship.previous_chunk_id})
+  MERGE (pc)-[:NEXT_CHUNK]->(c)
+  """
+  ```
+
+#### 实体关系提取器
+
+- 分批次 + 并行处理单批次中的多个文本块
+  - 划分批次，batch_chunks = chunks[i:i+dynamic_batch_size]
+  - 并行处理多个文本块，with concurrent.futures.ThreadPoolExecutor(max_workers=self.max_workers) as executor
+- 使用 LLM 理解分析文本内容，提取预定义类型的实体和关系
+  - 对每个批次的文本块，拼接为一个 batch_text 用户输入
+  - prompt（COT 思维链 + FewShot）+ ChatPromptTemplate
+  - 使用装饰器 retry 重试 3 次，识别实体和关系
+- 将提取的实体与关系进行缓存，存入文件中，cache-key（文本块 hash 值）= pickle.dump(result, f)
+- 最后将处理结果（实体与关系）附加到文件内容 字典中
+
+#### 最终图谱完善
+
+- 遍历原文档所有的文本块，创建文件名到实体数据的映射
+
+- 将实体与关系结果合并回文本块数据中
+
+  ```json
+  [
+     doc["filename"],  # 文件名
+     doc["content"],   # 原始内容
+     doc["chunks"]     # 文本块列表
+     # 文档ID, 文本块ID，
+     doc["entity_data"] # 文本块 - 实体与关系
+  ]
+  ```
+
+- 使用图数据库写入器（自定义封装了 langchain Neo4jGraph 操作 ）
+
+  ```python
+  # 遍历所有文本块，是一个文本块一个 GraphDocument
+  from langchain_community.graphs.graph_document import GraphDocument, Node, Relationship
+  from langchain_core.documents import Document
+  
+  # 使用正则，将提取的实体关系文本转换为 GraphDocument对象
+  node_pattern = re.compile(r'\("entity" : "(.+?)" : "(.+?)" : "(.+?)"\)')
+  relationship_pattern = re.compile(r'\("relationship" : "(.+?)" : "(.+?)" : "(.+?)" : "(.+?)" : (.+?)\)')
+  
+  for match in node_pattern.findall(result):
+      node_id, node_type, description = match
+  for match in relationship_pattern.findall(result):
+      source_id, target_id, rel_type, description, weight = match
+      
+  new_node = Node(
+      id=node_id,
+      type=node_type,
+      properties={'description': description}
+  )
+  Relationship(
+      source=nodes[source_id],
+      target=nodes[target_id],
+      type=rel_type,
+      properties={
+          "description": description,  # 关系描述
+          "weight": float(weight)      # 关系权重
+      }
+  )
+  GraphDocument(
+      nodes=nodes.values(), # 节点列表
+      relationships=relationships, # 关系列表
+      source=Document(
+          page_content=input_text, # 原始输入文本
+          metadata={"chunk_id": chunk_id} # 文本块ID
+      )
+  )
+  ```
+
+  ```python
+  # 使用并行处理和批处理，处理并写入所有文件的GraphDocument对象（所有文本块数据）
+  - graph_documents (List[GraphDocument]): contain nodes, relationships and source document information to be 
+  	added to the graph. Each GraphDocument should encapsulate 封装 the structure 结构 of part of the graph
+  - include_source (bool, optional): If True, stores the source document and links it to nodes in the graph using the MENTIONS 提及 relationship. This is useful for tracing back the origin of data. Merges source documents 
+  	based on the `id` property from the source document metadata if available; otherwise it calculates the MD5 
+      hash of `page_content` for merging process. Defaults to False.
+  - baseEntityLabel (bool, optional): If True, each newly created node gets a secondary __Entity__ label 二级标签,
+  	which is indexed 索引 and improves import speed and performance 性能. Defaults to False.
+  
+  # langchain-neo4j
+  # Document：由 graph.add_graph_documents() 创建的标签，不是自己创建的 __Document__
+  # 在 Neo4j 中，标签是区分大小写且完全匹配的，所以这是两个完全不同的节点类型
+  graph.add_graph_documents(
+      batch-docs,
+      baseEntityLabel=True,  # 使用基础实体标签
+      include_source=True    # 包含源文档信息
+  )
+  
+  # 合并Chunk节点与Document节点的关系
+  # 将Document节点的 MENTIONS 关系转移到对应的Chunk节点，保留关系的所有属性，转移后删除原Document节点，避免数据冗余
+  batch_data = [{"chunk_id": chunk_id} for chunk_id in batch_chunk_ids]
+  merge_query = """
+  UNWIND $batch_data AS data
+  MATCH (c:`__Chunk__` {id: data.chunk_id}), (d:Document {chunk_id:data.chunk_id})
+  WITH c, d
+  MATCH (d)-[r:MENTIONS]->(e) // 到所有从d出发，通过MENTIONS关系指向的节点e，以及关系r
+  MERGE (c)-[newR:MENTIONS]->(e)
+  ON CREATE SET newR += properties(r) // 如系已存在则只设置新创建的关系
+  //MERGE (c)-[:PART_OF]->(d) // 不需要，因为 d 不是自己创建的文档，标签不同
+  DETACH DELETE d // 同时删除节点，及与d相连的所有关系
+  """
+  # e是通过关系r从Document节点d连接到的任意节点（可能是各种实体节点），r是d和e之间的MENTIONS关系。
+graph.query(merge_query, params={"batch_data": batch_data})
+  ```
 
 
+### 3.2 实体索引和社区
+
+- 1
+
+
+
+
+
+- 执行推理
+- COT 思维链 + FewShot
+
+### ====
 
 **文件**：<mcfile name="main.py" path="f:\graph-rag-agent\server\main.py"></mcfile>
 

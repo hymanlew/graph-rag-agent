@@ -7,25 +7,6 @@ from graph.core import connection_manager, generate_hash
 from config.settings import BATCH_SIZE as DEFAULT_BATCH_SIZE
 from config.settings import MAX_WORKERS as DEFAULT_MAX_WORKERS
 
-"""
-图结构构建模块
-
-该模块负责创建和管理Neo4j图数据库中的文档和文本块节点结构，
-是图RAG系统中文档存储和检索的基础组件。
-
-核心功能:
-- 文档节点(Document)的创建和管理
-- 文本块(Chunk)节点的创建和批量处理
-- 文档与文本块之间关系的建立
-- 文本块之间顺序关系的维护
-- 并行处理大规模文档数据
-
-实现特点:
-- 采用批处理优化数据库性能
-- 支持并行处理提高大规模数据处理效率
-- 使用MERGE语句确保数据一致性
-- 动态计算批处理大小以适应不同规模数据
-"""
 
 class GraphStructureBuilder:
     """
@@ -33,6 +14,7 @@ class GraphStructureBuilder:
     
     功能：
     - 在Neo4j数据库中创建和管理文档(Document)和文本块(Chunk)节点
+    - 文本块(Chunk)节点的创建和批量处理
     - 建立文档与文本块之间的PART_OF关系
     - 维护文本块之间的顺序(NEXT_CHUNK)关系
     - 记录文档的第一个文本块(FIRST_CHUNK)关系
@@ -40,9 +22,10 @@ class GraphStructureBuilder:
     实现思路：
     - 采用批处理机制减少数据库往返，优化性能
     - 支持并行处理大规模文档数据
-    - 使用哈希算法生成文本块唯一标识
+    - 使用哈希算法生成文本块唯一标识，使用 MERGE 语句确保数据一致性
     - 维护文档的完整结构和文本流顺序
     - 支持增量更新和数据一致性保障
+    - 动态计算批处理大小以适应不同规模数据
     """
     
     def __init__(self, batch_size=100):
@@ -61,7 +44,6 @@ class GraphStructureBuilder:
         """
         self.graph = connection_manager.get_connection()
         self.graph.refresh_schema()
-        
         self.batch_size = batch_size or DEFAULT_BATCH_SIZE
             
     def clear_database(self):
@@ -113,7 +95,7 @@ class GraphStructureBuilder:
         
     def create_relation_between_chunks(self, file_name: str, chunks: List) -> List[Dict]:
         """
-        创建Chunk节点并建立文档-块关系
+        创建Chunk节点并建立文档-文档块关系
         
         参数：
             file_name: 文件名，用于关联文档节点
@@ -126,14 +108,8 @@ class GraphStructureBuilder:
         1. 遍历每个文本块，生成唯一哈希ID
         2. 计算每个块在文档中的位置、偏移量等元数据
         3. 构建块之间的顺序关系和文档-块关系
-        4. 批量处理以提高数据库操作效率
+        4. 批量处理以提高数据库操作效率，写入数据库
         5. 记录处理时间用于性能监控
-        
-        技术细节：
-        - 使用generate_hash生成文本块的唯一标识
-        - 维护content_offset追踪文本在原始文档中的位置
-        - 批处理机制减少数据库往返次数
-        - 支持关系的批量创建
         """
         t0 = time.time()
         
@@ -226,15 +202,6 @@ class GraphStructureBuilder:
             file_name: 文件名
             batch_data: 批处理数据列表，包含所有待处理文本块信息
             relationships: 关系数据列表，包含所有待创建关系信息
-            
-        实现思路：
-        1. 检查批处理数据是否为空
-        2. 将关系数据分为FIRST_CHUNK和NEXT_CHUNK两类
-        3. 调用优化的数据库操作方法处理这两类关系
-        
-        性能优化：
-        - 提前分类关系类型，减少查询中的条件判断
-        - 批处理减少数据库连接和查询次数
         """
         if not batch_data:
             return
@@ -242,29 +209,15 @@ class GraphStructureBuilder:
         # 分离FIRST_CHUNK和NEXT_CHUNK关系，便于针对性处理
         first_relationships = [r for r in relationships if r.get("type") == "FIRST_CHUNK"]
         next_relationships = [r for r in relationships if r.get("type") == "NEXT_CHUNK"]
-        
-        # 使用优化的数据库操作方法处理批数据
-        self._create_chunks_and_relationships_optimized(file_name, batch_data, first_relationships, next_relationships)
-    
-    def _create_chunks_and_relationships_optimized(self, file_name: str, batch_data: List[Dict], 
-                                                  first_relationships: List[Dict], next_relationships: List[Dict]):
+
         """
-        优化的创建文本块和关系的数据库操作
-        
-        参数：
-            file_name: 文件名
-            batch_data: 批处理数据列表
-            first_relationships: FIRST_CHUNK关系列表
-            next_relationships: NEXT_CHUNK关系列表
-            
-        实现思路：
+        使用优化的数据库操作方法处理批数据，实现思路：
         1. 分三个阶段执行数据库操作，每阶段专注于特定类型的操作
         2. 使用UNWIND语句高效处理批量数据
         3. 使用MERGE确保数据一致性，避免重复创建
         4. 仅在必要时（关系列表非空）执行相应查询
         
         数据库优化策略：
-        - 减少数据库往返次数，提高性能
         - 利用Neo4j的批处理能力处理大量数据
         - 分离不同类型关系的处理，减少单次查询复杂度
         """
@@ -323,7 +276,7 @@ class GraphStructureBuilder:
         1. 根据数据量自动选择处理策略：小数据集使用标准方法，大数据集使用并行方法
         2. 将文本块分成多个批次，每个批次分配给不同线程处理
         3. 并行计算每个批次的哈希值、位置信息和关系数据
-        4. 合并所有批次结果后批量写入数据库
+        4. 合并所有批次结果后批量写入数据库（文本块顺序，文本块与文档之间关系）
         
         性能优化特点：
         - 动态批次大小计算，根据数据量和线程数自动调整

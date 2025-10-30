@@ -1,28 +1,3 @@
-"""
-Graph-RAG Agent 实体关系提取模块
-
-此模块实现了从文本中提取实体和关系的核心功能，是构建知识图谱的关键组件。
-主要功能包括：
-
-1. 实体关系提取
-   - 使用大语言模型分析文本内容
-   - 识别预定义类型的实体和关系
-   - 生成结构化的提取结果
-
-2. 性能优化机制
-   - 智能缓存系统，避免重复处理相同内容
-   - 并行处理框架，提高处理效率
-   - 批量处理功能，减少LLM调用次数
-   - 自动重试机制，增强系统稳定性
-
-3. 大文件处理支持
-   - 流式处理模式，避免内存溢出
-   - 实时结果处理和图数据库写入
-
-该模块采用异步并行处理架构，结合缓存机制，实现了高效的实体关系提取流程，
-为构建高质量的知识图谱提供了坚实基础。
-"""
-
 import time
 import os
 import pickle
@@ -43,8 +18,8 @@ class EntityRelationExtractor:
     实体关系提取器
     
     功能：
-    - 从文本中提取预定义类型的实体和关系
-    - 使用大语言模型进行自然语言理解和分析
+    - 使用大语言模型进行自然语言理解和分析文本内容
+    - 从文本中识别提取预定义类型的实体和关系
     - 支持并行处理多个文本块
     - 实现缓存机制减少重复计算
     - 提供批处理功能优化LLM调用效率
@@ -52,17 +27,22 @@ class EntityRelationExtractor:
     实现思路：
     - 使用LangChain构建提示模板和处理链
     - 采用线程池实现并行处理
-    - 通过哈希和文件存储实现高效缓存
-    - 设计动态批处理策略根据文本大小调整批次
+    - 通过哈希和文件存储实现高效缓存，避免重复处理相同内容
+    - 设计动态批处理策略根据文本大小调整批次，减少LLM调用次数
     - 实现自动重试和错误处理机制
-    
+
+    大文件处理支持
+    - 流式处理模式，避免内存溢出
+    - 实时结果处理和图数据库写入
+
     架构特点：
     - 多层处理架构：缓存层、批处理层、并行处理层
     - 完整的错误处理：异常捕获、重试机制、降级策略
     - 详细的性能监控：处理时间、缓存命中率统计
     - 资源优化：动态批处理、内存管理、并行控制
+
+    该模块采用异步并行处理架构，结合缓存机制，实现了高效的实体关系提取流程，为构建高质量的知识图谱提供了坚实基础。
     """
-    
     def __init__(self, llm, system_template, human_template, 
              entity_types: List[str], relationship_types: List[str],
              cache_dir="./cache/graph", max_workers=4, batch_size=5):
@@ -96,8 +76,7 @@ class EntityRelationExtractor:
         self.tuple_delimiter = " : "     # 实体-关系-实体三元组中的分隔符
         self.record_delimiter = "\n"       # 不同记录之间的分隔符
         self.completion_delimiter = "\n\n"  # 完成标志分隔符
-        
-        # 创建提示模板
+
         system_message_prompt = SystemMessagePromptTemplate.from_template(system_template)
         human_message_prompt = HumanMessagePromptTemplate.from_template(human_template)
         
@@ -107,15 +86,11 @@ class EntityRelationExtractor:
             MessagesPlaceholder("chat_history"),
             human_message_prompt
         ])
-        
-        # 创建处理链，将提示模板与语言模型连接
         self.chain = self.chat_prompt | self.llm
         
         # 缓存设置
         self.cache_dir = cache_dir
         self.enable_cache = True
-        
-        # 确保缓存目录存在
         if not os.path.exists(cache_dir):
             os.makedirs(cache_dir)
         
@@ -136,10 +111,6 @@ class EntityRelationExtractor:
             
         返回：
             str: 基于文本内容的唯一哈希值，用于缓存查找
-        
-        实现说明：
-            - 使用项目中的generate_hash工具函数计算文本内容的唯一哈希值
-            - 这个哈希值用作缓存文件名，确保相同内容得到一致的缓存标识
         """
         # 调用核心模块的哈希生成函数，创建文本内容的唯一标识
         return generate_hash(text)
@@ -164,16 +135,11 @@ class EntityRelationExtractor:
     
     def _save_to_cache(self, cache_key: str, result: str) -> None:
         """
-        保存处理结果到缓存
+        保存处理结果到缓存，使用pickle序列化结果并存储到文件
         
         参数：
             cache_key: 缓存键
             result: 需要缓存的处理结果
-        
-        实现说明：
-            - 首先检查缓存功能是否启用
-            - 使用pickle序列化结果并存储到文件
-            - 包含完整的错误处理，确保缓存失败不影响主流程
         """
         # 检查缓存功能是否启用
         if not self.enable_cache:
@@ -191,20 +157,13 @@ class EntityRelationExtractor:
     
     def _load_from_cache(self, cache_key: str) -> Optional[str]:
         """
-        从缓存加载处理结果
+        从缓存加载处理结果，使用pickle反序列化加载缓存结果
         
         参数：
             cache_key: 缓存键
             
         返回：
             Optional[str]: 缓存的处理结果，如果缓存不存在则返回None
-        
-        实现说明：
-            - 检查缓存功能是否启用
-            - 验证缓存文件是否存在
-            - 使用pickle反序列化加载缓存结果
-            - 更新缓存命中或未命中统计
-            - 包含完整的错误处理
         """
         # 检查缓存功能是否启用
         if not self.enable_cache:
@@ -491,13 +450,7 @@ class EntityRelationExtractor:
             
         返回：
             str: 提取的实体和关系结果
-            
-        处理流程：
-        1. 首先检查缓存
-        2. 缓存未命中时调用LLM处理
-        3. 保存结果到缓存
-        4. 返回结果
-        
+
         装饰器说明：
             - 使用@retry装饰器实现自动重试机制
             - 最多重试3次，每次重试间隔1秒
@@ -539,12 +492,6 @@ class EntityRelationExtractor:
             chunk_size: 块大小（字符数）
             structure_builder: 图结构构建器
             graph_writer: 图数据库写入器
-            
-        实现特点：
-        1. 流式读取文件内容，减少内存占用
-        2. 实时处理和写入，支持大型文档处理
-        3. 缓存优先，提高重复处理效率
-        4. 并行处理结合实时写入
         
         应用场景：
         - 处理超大文件（GB级别）
