@@ -1,32 +1,3 @@
-"""
-Graph-RAG Agent 实体索引管理模块
-
-此模块实现了知识图谱系统中的实体索引管理功能，负责创建和管理实体的向量索引，
-支持基于向量相似度的实体查询。主要功能包括：
-
-1. 实体向量索引创建
-   - 批量处理实体节点的嵌入向量计算
-   - 优化的索引创建和管理
-   - 支持索引刷新和重建
-
-2. 高效计算优化
-   - 多级批处理策略
-   - 并行计算框架
-   - 智能批处理大小调整
-
-3. 健壮性保障
-   - 多级降级机制
-   - 错误处理和恢复
-   - 空文本和异常情况处理
-
-4. 性能监控
-   - 详细的时间统计
-   - 处理进度跟踪
-   - 资源利用优化
-
-该模块是Graph-RAG系统中负责实体索引构建的核心组件，为实体查询提供向量支持。
-"""
-
 import time
 import concurrent.futures
 from typing import List, Dict, Any, Optional
@@ -44,8 +15,13 @@ class EntityIndexManager(BaseIndexer):
     - 在Neo4j数据库中创建和管理实体的向量索引
     - 处理实体节点的embedding向量计算和存储
     - 支持基于向量相似度的实体查询
-    - 提供高效的批处理和并行计算能力
-    
+    - 提供高效的批处理和并行计算能力,智能批处理大小调整
+
+    健壮性保障
+    - 多级降级机制
+    - 错误处理和恢复
+    - 空文本和异常情况处理
+
     实现思路：
     - 继承自BaseIndexer基类，利用其通用批处理功能
     - 采用多级批处理和并行计算优化性能
@@ -87,10 +63,6 @@ class EntityIndexManager(BaseIndexer):
         - 创建实体ID属性的B树索引，加速实体查找
         - 使用条件创建(IF NOT EXISTS)避免重复创建索引
         - 通过连接管理器批量创建索引
-        
-        索引作用：
-        - 实体ID索引：加速通过ID查找特定实体的操作
-        - 优化图数据库遍历性能，特别是在大型知识图谱中
         """
         # 定义实体索引创建查询列表
         index_queries = [
@@ -103,12 +75,7 @@ class EntityIndexManager(BaseIndexer):
     def clear_existing_index(self) -> None:
         """
         清除已存在的实体embedding相关索引
-        
-        实现细节：
-        - 清除实体嵌入向量索引
-        - 清除通用向量索引
-        - 这一步是为了防止embedding模型切换导致的索引不兼容问题
-        
+
         注意事项：
         - 在索引重建前执行此操作
         - 执行期间可能会影响查询性能
@@ -116,7 +83,7 @@ class EntityIndexManager(BaseIndexer):
         """
         # 清除特定的实体嵌入向量索引
         connection_manager.drop_index("entity_embedding")
-        # 清除通用向量索引，确保兼容性
+        # 清除通用向量索引，确保兼容性，防止embedding模型切换导致的索引不兼容问题
         connection_manager.drop_index("vector")
 
     def create_entity_index(self, 
@@ -291,7 +258,7 @@ class EntityIndexManager(BaseIndexer):
             for i in range(0, len(embedding_tasks), embed_batch_size):
                 sub_batch = embedding_tasks[i:i+embed_batch_size]
                 try:
-                    # 第一级策略：尝试使用批量嵌入方法，性能最优
+                    # 第一级策略：尝试使用批量嵌入方法，性能最优（HuggingFaceEmbeddings）
                     if hasattr(self.embeddings, 'embed_documents'):
                         sub_batch_embeddings = self.embeddings.embed_documents(sub_batch)
                         embeddings.extend(sub_batch_embeddings)
@@ -333,7 +300,7 @@ class EntityIndexManager(BaseIndexer):
         
         参数：
             entities: 需要提取文本的实体列表
-            text_properties: 需要提取的文本属性列表
+            text_properties: 需要提取的文本属性列表，['id', 'description']
             
         返回：
             List[str]: 实体的文本内容列表，顺序与输入实体列表对应
@@ -343,17 +310,13 @@ class EntityIndexManager(BaseIndexer):
         - 处理空属性的情况，确保每个实体都有有效的文本
         - 组合多个文本属性，丰富实体表示
         - 为无内容实体生成默认标识文本
-        
-        数据库优化：
-        - 使用Neo4j原生ID进行精确查找
-        - 参数化查询避免SQL注入风险
-        - 条件属性选择处理空值情况
         """
-        # 构建查询参数，提取实体Neo4j原生ID列表
+        # 构建查询参数，提取实体Neo4j原生ID列表，进行精确查找
         entity_ids = [entity['neo4j_id'] for entity in entities]
         
         # 构建属性选择部分的查询语句，处理可能为空的属性
         # 使用CASE WHEN语句确保即使属性为空也能正确处理
+        # 参数化查询避免SQL注入风险
         property_selections = ", ".join([
             f"CASE WHEN e.{prop} IS NOT NULL THEN e.{prop} ELSE '' END AS {prop}_text"
             for prop in text_properties

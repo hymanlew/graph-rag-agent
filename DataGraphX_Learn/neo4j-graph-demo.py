@@ -9,7 +9,6 @@ neo4j 官方提供的 RAG 包
 生产环境，是使用 neo4j + langchain-neo4j 组合
 """
 import asyncio
-
 from neo4j import GraphDatabase
 from neo4j_graphrag.embeddings import OpenAIEmbeddings
 from neo4j_graphrag.experimental.pipeline.kg_builder import SimpleKGPipeline
@@ -111,6 +110,7 @@ print(response.answer)
 driver.close()
 
 
+# ----------------------------------------------------------------
 """
 生产环境，是使用 neo4j + langchain-neo4j 组合
 """
@@ -119,11 +119,11 @@ import jieba
 import jieba.analyse
 from langchain_community.document_loaders import PyPDFLoader
 from langchain.text_splitter import RecursiveCharacterTextSplitter
-from langchain.schema import Document
 from langchain_community.vectorstores import Neo4jVector
 from langchain_openai import ChatOpenAI
 from langchain_openai import OpenAIEmbeddings
 from langchain_neo4j import Neo4jGraph
+from langchain_core.documents import Document
 from langchain_experimental.graph_transformers import LLMGraphTransformer
 import streamlit as st
 from concurrent.futures import ThreadPoolExecutor

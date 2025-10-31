@@ -168,15 +168,6 @@ class BaseCommunityDetector(ABC):
             
         异常:
             任何异常都会被捕获并记录，但会重新抛出以便上层处理
-            
-        流程:
-        1. 记录开始时间并打印日志
-        2. 初始化结果字典
-        3. 在图投影上下文中执行检测:
-           a. 调用detect_communities()执行检测
-           b. 调用save_communities()保存结果
-        4. 收集并记录性能指标
-        5. 异常处理和错误报告
         """
         # 记录开始时间
         start_time = time.time()

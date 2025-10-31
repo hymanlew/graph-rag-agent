@@ -318,7 +318,7 @@ class KnowledgeGraphBuilder:
                             doc["chunks"]     # 文本块列表
                         ])
                 
-                # 性能优化：根据数据集大小选择不同的处理方法
+                # 提取实体和关系 性能优化：根据数据集大小选择不同的处理方法
                 if total_chunks > 100:
                     # 对于大型数据集使用批处理模式，更高效地利用LLM API
                     processed_file_contents = self.entity_extractor.process_chunks_batch(
@@ -376,7 +376,7 @@ class KnowledgeGraphBuilder:
                 for doc in self.processed_documents:
                     # 只处理有文本块和实体数据的文档
                     if "chunks" in doc and doc["chunks"] and "entity_data" in doc:
-                        # 获取图构建结果（创建的chunk节点列表）和实体数据
+                        # 获取图构建结果（创建的chunk节点列表）和实体数据，包含 chunk_id, chunk Document
                         graph_result = doc.get("graph_result", [])
                         entity_data = doc.get("entity_data", [])
                         

@@ -1,7 +1,6 @@
 from rich.console import Console
 from rich.panel import Panel
 from rich.text import Text
-
 from build_graph import KnowledgeGraphBuilder
 from build_index_and_community import IndexCommunityBuilder
 from build_chunk_index import ChunkIndexBuilder

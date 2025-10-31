@@ -4,6 +4,7 @@
 该模块提供统一的模型加载和获取接口，支持文本嵌入、语言模型和流式输出等功能。
 主要用于集中管理项目中使用的各类AI模型，简化模型调用并提供一致的接口。
 """
+from langchain_huggingface import HuggingFaceEmbeddings
 from langchain_openai import OpenAIEmbeddings
 from langchain_openai import ChatOpenAI
 from langchain.callbacks.streaming_aiter import AsyncIteratorCallbackHandler
@@ -44,12 +45,19 @@ load_dotenv()
 
 def get_embeddings_model():
     """获取OpenAI嵌入模型实例"""
-    # 初始化嵌入模型实例，从环境变量读取配置
-    model = OpenAIEmbeddings(
-        model=os.getenv('OPENAI_EMBEDDINGS_MODEL'),  # 嵌入模型名称
-        api_key=os.getenv('OPENAI_API_KEY'),  # API密钥
-        base_url=os.getenv('OPENAI_BASE_URL'),  # API基础URL，支持自定义端点
+    model = HuggingFaceEmbeddings(
+        model_name="models/text/bge-small-zh-v1.5",
+        model_kwargs={"device": 'cuda' if torch.cuda.is_available() else 'cpu'},
+        encode_kwargs={
+            "normalize_embeddings": True,  # 归一化
+            "batch_size": 32  # 根据内存调整
+        }
     )
+    # model = OpenAIEmbeddings(
+    #     model=os.getenv('OPENAI_EMBEDDINGS_MODEL'),  # 嵌入模型名称
+    #     api_key=os.getenv('OPENAI_API_KEY'),  # API密钥
+    #     base_url=os.getenv('OPENAI_BASE_URL'),  # API基础URL，支持自定义端点
+    # )
     return model
 
 def get_llm_model():

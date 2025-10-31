@@ -1,8 +1,7 @@
-# 系统相关模块导入
-import os  # 用于获取操作系统信息
-import time  # 用于计时和性能监控
+import os
+import time
 import psutil  # 用于获取系统资源使用情况
-from typing import Dict, Any  # 用于类型注解
+from typing import Dict, Any
 
 # 富文本显示库，用于美化控制台输出
 from rich.console import Console  # 高级终端文本处理
@@ -10,8 +9,6 @@ from rich.progress import Progress, SpinnerColumn, TextColumn, BarColumn  # 进�
 from rich.table import Table  # 表格显示组件
 from rich.panel import Panel  # 面板显示组件
 from rich.text import Text  # 富文本处理组件
-
-# 项目核心模块导入
 from graph import ChunkIndexManager  # 文本块索引管理器，负责创建和管理向量索引
 from config.neo4jdb import get_db_manager  # 获取Neo4j数据库管理器实例
 from config.settings import MAX_WORKERS, CHUNK_BATCH_SIZE  # 配置参数：并行工作线程数和批处理大小
@@ -86,8 +83,7 @@ class ChunkIndexBuilder:
             task = progress.add_task("[cyan]初始化组件...", total=2)  # 设置进度任务，共2个步骤
             
             # 步骤1: 初始化图数据库连接
-            db_manager = get_db_manager()  # 获取数据库管理器实例
-            self.graph = db_manager.graph  # 获取图数据库对象
+            self.graph = get_db_manager().graph  # 获取图数据库对象
             progress.advance(task)  # 更新进度条
               
             # 步骤2: 初始化文本块索引管理器
@@ -99,7 +95,6 @@ class ChunkIndexBuilder:
             # 输出使用的配置参数，帮助用户了解当前设置
             self.console.print(f"[blue]并行处理线程数: {MAX_WORKERS}[/blue]")
             self.console.print(f"[blue]数据库批处理大小: {CHUNK_BATCH_SIZE}[/blue]")
-            
             progress.advance(task)  # 更新进度条到100%
         
         # 记录初始化阶段总耗时

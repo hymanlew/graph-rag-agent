@@ -1,22 +1,3 @@
-"""
-索引和社区构建模块
-
-此模块是Graph-RAG系统中知识图谱后期处理的关键组件，负责在基础图谱构建完成后，
-执行一系列的高级处理任务，包括实体索引创建、相似实体检测与合并、社区检测和社区摘要生成。
-
-知识图谱的质量和性能不仅取决于初始构建，还需要这些后期优化步骤。特别是在处理大型文档集合时，
-可能会出现实体重复、图结构冗余等问题，通过这些优化可以显著提高知识图谱的准确性和查询效率。
-
-模块主要功能：
-1. 实体向量索引创建 - 为实体建立向量表示，支持高效的相似性搜索
-2. 相似实体检测与合并 - 识别并合并语义相似的实体，减少冗余
-3. 社区检测 - 基于图结构发现实体间的自然社区，揭示概念聚类
-4. 社区摘要生成 - 为每个检测到的社区生成文本摘要，便于理解社区主题
-
-整个流程设计采用了流水线架构，各阶段独立但有序衔接，形成完整的后处理流水线。
-同时，该模块还实现了详细的性能监控和可视化报告功能，便于系统调优和结果评估。
-"""
-
 import os
 import time
 import psutil
@@ -29,16 +10,13 @@ from rich.text import Text
 
 # 导入配置参数
 from config.settings import community_algorithm
-# 导入图处理相关组件
+# 导入实体索引管理器相关组件
 from graph import EntityIndexManager
 from graph import GDSConfig, SimilarEntityDetector
 from graph import EntityMerger
 # 导入社区检测相关组件
 from community import CommunityDetectorFactory
 from community import CommunitySummarizerFactory
-# 导入Neo4j图数据科学库
-from graphdatascience import GraphDataScience
-
 # 导入数据库管理和配置
 from config.neo4jdb import get_db_manager
 from config.settings import MAX_WORKERS, ENTITY_BATCH_SIZE, GDS_MEMORY_LIMIT
@@ -49,11 +27,10 @@ shutup.please()
 
 class IndexCommunityBuilder:
     """
-    索引和社区构建器，负责在基础图谱构建后的进一步处理。
-    
-    该类是Graph-RAG系统知识图谱后处理流水线的核心组件，在基础实体-关系图构建完成后，
-    执行一系列高级处理任务，以优化图谱质量、减少冗余并提取概念结构。
-    
+    索引和社区构建器，负责在基础图谱构建后的进一步处理。包括实体索引创建、相似实体检测与合并、社区检测和社区摘要生成。
+    知识图谱的质量和性能不仅取决于初始构建，还需要这些后期优化步骤。特别是在处理大型文档集合时，
+    可能会出现实体重复、图结构冗余等问题，通过这些优化可以显著提高知识图谱的准确性和查询效率。
+
     设计理念：
     - 模块化架构 - 各处理阶段独立封装，便于维护和扩展
     - 性能监控 - 记录每个处理阶段的时间和资源消耗
@@ -63,19 +40,14 @@ class IndexCommunityBuilder:
     主要功能包括：
     1. 实体索引的创建和管理 - 构建实体向量索引，支持高效相似性搜索
     2. 相似实体的检测和合并 - 识别并合并语义重复的实体，提高图谱精度
-    3. 社区检测 - 基于图结构识别实体集群，发现潜在的概念分组
+    3. 社区检测 - 基于图结构识别实体集群（实体间的自然社区），揭示概念聚类
     4. 社区摘要生成 - 为每个检测到的社区生成文本摘要，增强可解释性
-    
-    这些处理步骤共同构成了一个完整的知识图谱优化流程，显著提升了Graph-RAG系统的
-    查询效率和知识准确性。
     """
     
     def __init__(self):
         """
         初始化索引和社区构建器
-        
-        创建所有必要的组件和数据结构，设置性能监控统计，并初始化与Neo4j数据库的连接。
-        初始化过程包括：
+
         1. 创建控制台输出对象用于可视化展示
         2. 初始化性能统计数据结构
         3. 设置计时器变量
@@ -121,28 +93,14 @@ class IndexCommunityBuilder:
         )
 
     def _initialize_components(self):
-        """
-        初始化所有必要的组件
-        
-        创建并配置所有需要的处理组件，建立数据库连接，并初始化结果存储。初始化过程分为三个主要步骤：
-        1. 建立Neo4j图数据库连接和GDS（图数据科学）库连接
-        2. 创建并配置各处理组件，如实体索引管理器、相似实体检测器和实体合并器
-        3. 初始化处理结果存储结构
-        
-        同时，该方法还负责记录初始化阶段的性能统计数据，并向用户显示关键配置参数。
-        """
+        """初始化所有必要的组件"""
         init_start = time.time()
         
         with self._create_progress() as progress:
             task = progress.add_task("[cyan]初始化组件...", total=3)
             
             # 步骤1: 初始化图数据库连接
-            self.gds = GraphDataScience(
-                os.environ["NEO4J_URI"],
-                auth=(os.environ["NEO4J_USERNAME"], os.environ["NEO4J_PASSWORD"])
-            )
-            db_manager = get_db_manager()
-            self.graph = db_manager.graph
+            self.graph = get_db_manager().graph
             progress.advance(task)
             
             # 步骤2: 初始化各个处理组件
@@ -152,13 +110,12 @@ class IndexCommunityBuilder:
                 max_workers=MAX_WORKERS
             )
             
-            # GDS配置对象，用于配置图数据科学操作
+            # GDS 自定义配置对象，用于配置图数据科学操作
             self.gds_config = GDSConfig(
                 memory_limit=GDS_MEMORY_LIMIT,
                 batch_size=ENTITY_BATCH_SIZE
             )
-            
-            # 相似实体检测器，用于识别语义相似的实体
+            # 社区检测、中心性分析、路径发现
             self.entity_detector = SimilarEntityDetector(self.gds_config)
             
             # 实体合并器，用于合并检测到的相似实体
@@ -224,10 +181,9 @@ class IndexCommunityBuilder:
         self._display_stage_header("构建索引和社区")
         
         try:
-            # 1. 创建实体索引
+            # 1. 创建实体向量索引
             index_start = time.time()
             self.console.print("[cyan]正在创建实体索引...[/cyan]")
-            
             vector_store = self.index_manager.create_entity_index()
             if not vector_store:
                 self.console.print("[yellow]警告: 实体索引创建可能不完整[/yellow]")
@@ -243,12 +199,10 @@ class IndexCommunityBuilder:
             self.console.print(f"[blue]其中: 嵌入计算: {embedding_time:.2f}秒 ({embedding_time/index_total*100:.1f}%), "
                               f"数据库操作: {db_time:.2f}秒 ({db_time/index_total*100:.1f}%)[/blue]")
             
-            # 2. 检测和合并相似实体
+            # 2. 检测和合并相似实体，社区检测并设置、中心性分析、路径发现
             similar_start = time.time()
             self.console.print("[cyan]正在检测相似实体...[/cyan]")
-            
             duplicates = self.entity_detector.process_entities()
-            
             self.performance_stats["相似实体检测"] = time.time() - similar_start
             
             # 显示相似实体检测性能统计
@@ -267,9 +221,7 @@ class IndexCommunityBuilder:
             # 3. 执行实体合并
             merge_start = time.time()
             self.console.print("[cyan]正在合并相似实体...[/cyan]")
-            
             merged_count = self.entity_merger.process_duplicates(duplicates)
-            
             self.performance_stats["实体合并"] = time.time() - merge_start
             
             # 显示实体合并性能统计
@@ -298,7 +250,7 @@ class IndexCommunityBuilder:
             # 这种设计模式提供了灵活性，允许轻松切换不同的社区检测算法
             detector = CommunityDetectorFactory.create(
                 algorithm=community_algorithm,
-                gds=self.gds,
+                gds=self.entity_detector.gds,
                 graph=self.graph
             )
             community_results = detector.process()
@@ -326,7 +278,6 @@ class IndexCommunityBuilder:
 
             # 记录社区摘要生成阶段的时间消耗
             self.performance_stats["社区摘要"] = time.time() - summary_start
-
             self._display_results_table(
                 "社区摘要结果",
                 {
@@ -334,7 +285,6 @@ class IndexCommunityBuilder:
                     "耗时": f"{self.performance_stats['社区摘要']:.2f}秒"
                 }
             )
-            
             self.console.print("[green]索引和社区构建完成[/green]")
             
             # 显示性能统计摘要

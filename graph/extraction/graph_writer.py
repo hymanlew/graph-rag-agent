@@ -155,7 +155,7 @@ class GraphWriter:
         
     def process_and_write_graph_documents(self, file_contents: List) -> None:
         """
-        处理并写入所有文件的GraphDocument对象 - 使用并行处理和批处理优化
+        处理并写入所有文件的处理数据（文档内容，文本块，文本块Document，实体与关系）- 使用并行处理和批处理优化
         
         参数：
             file_contents: 文件内容列表，每个元素包含文件路径、内容和提取结果

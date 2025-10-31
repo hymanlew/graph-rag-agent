@@ -14,7 +14,7 @@ Graph-RAG-Agent 是一个基于图数据库和检索增强生成（RAG）技术�
 
 ## 2. 核心业务流程
 
-### 2.1 用户请求处理流程
+### 2.1 请求处理流程
 
 ```mermaid
 flowchart TD
@@ -188,8 +188,8 @@ build/main.py - KnowledgeGraphBuilder
   [
      doc["filename"],  # 文件名
      doc["content"],   # 原始内容
-     doc["chunks"]     # 文本块列表
-     # 文档ID, 文本块ID，
+     doc["chunks"],    # 文本块列表
+     chunk_document,	 # 文档ID, 文本块ID，
      doc["entity_data"] # 文本块 - 实体与关系
   ]
   ```
@@ -267,22 +267,147 @@ build/main.py - KnowledgeGraphBuilder
   DETACH DELETE d // 同时删除节点，及与d相连的所有关系
   """
   # e是通过关系r从Document节点d连接到的任意节点（可能是各种实体节点），r是d和e之间的MENTIONS关系。
-graph.query(merge_query, params={"batch_data": batch_data})
+  graph.query(merge_query, params={"batch_data": batch_data})
   ```
 
 
 ### 3.2 实体索引和社区
 
-- 1
+```python
+index_query = "CREATE INDEX IF NOT EXISTS FOR (e:`__Entity__`) ON (e.id)"  # 实体ID B树索引 - 快速查找特定实体
+graph.query(index_query)
 
+# 清除已有的向量索引，避免索引冲突
+# 从现有图中创建Neo4j向量存储对象
+vector_store = Neo4jVector.from_existing_graph(
+    self.embeddings,
+    node_label=node_label,
+    text_node_properties=text_properties,
+    embedding_node_property=embedding_property
+)
 
+# 获取所有需要处理的实体，批量获取实体的文本内容，用于嵌入计算
+embeddings.embed_documents(batch-docs)
+update_data.append({
+     "id": entity['neo4j_id'],  # Neo4j原生ID，用于精确定位实体节点
+     "embedding": embeddings[i]  # 计算好的向量嵌入
+})
+query = f"""
+UNWIND $updates AS update
+MATCH (e) WHERE id(e) = update.id
+SET e.{embedding_property} = update.embedding
+"""
+graph.query(query, params={"updates": update_data})
 
+# 导入Neo4j图数据科学库，图投影与管理，图算法执行，将节点分组到不同的社区中
+# 检测和合并相似实体，社区检测并设置、中心性分析、路径发现
+from graphdatascience import GraphDataScience
+# 第一阶段：获取合并建议 - 使用LLM分析哪些实体应该合并
+# 第二阶段：执行合并 - 在图数据库中实际执行实体合并操作
+# 第三阶段：关系清理 - 合并实体后，清理可能产生的重复关系
+result = self.gds.wcc.write(
+    self.G,
+    writeProperty="wcc",
+    relationshipTypes=["SIMILAR"],
+    consecutiveIds=True  # 使用连续ID优化存储
+)
+result = self.gds.leiden.write(
+    self.G,
+    writeProperty="communities",
+    includeIntermediateCommunities=True,
+    relationshipWeightProperty="weight",
+    **self._get_optimized_leiden_params()
+)
 
+# 格式化社区信息为LLM可处理的字符串，调用LLM生成摘要，格式化输出，保存摘要
+```
 
-- 执行推理
-- COT 思维链 + FewShot
+### 3.3 自动化方案选型
+
+#### LLMGraphTransformer
+
+- from langchain_core.documents import Document：自定义拆分文本块（RecursiveCharacterTextSplitter），将其封装到 Document 对象 Documents.
+- from langchain_experimental.graph_transformers import LLMGraphTransformer：创建对象时，指定提取提示词，节点类型提取约束，关系类型提取约束
+- graphDocuments = LLMGraphTransformer.convert_to_graph_documents(Documents)：将文本块 Documents 按照提示词/默认规则提取实体及关系，封装为 Node，Relationship，GraphDocument
+- graph.add_graph_documents(graphDocuments)：使用 langchain-neo4j 内置方法插入 GraphDocument 到数据库，指定 include_source，baseEntityLabel
+- Neo4jVector.from_documents，Neo4jVector.from_existing_graph：在当前图中，对文本块创建向量索引，用于向量检索
+
+**优点：**
+
+- 自动化，节省人力，快速从文本中提取知识图谱。
+
+**缺点：**
+
+- 不会自动维护原始文档与文本块之间的层次结构。
+- 如果文本块之间有关联，它也不会自动处理跨文本块的实体合并（除非使用全局索引或后续处理）。
+- 通常只处理文本块级别的图文档，不会自动构建文本块与原始文档之间的关系。如果需要保留原始文档的信息，并建立文本块与原始文档的关系，则需要自己处理。
+- 也不会自动生成社区节点，及其关联的关系
+
+因此，此方案适用于对准确性要求不高、快速构建原型的场景。对于生产环境，如果对知识图谱的质量要求很高，可能需要后续的人工校验或更复杂的流程。
+
+#### 手动编写流程
+
+- 自定义拆分文本块（RecursiveCharacterTextSplitter / 或手动拆分-按段落标点+ 分词库等规则）
+- 手写 cypher 根据文本块中的信息，插入文档，文本块节点，及文本块-文档关系
+- 然后根据文本块中的信息及 prompt 提示词，使用 LLM 提取实体和关系
+- from langchain_core.documents import Document：根据文本块中的信息，将其封装到 Document 对象 Documents
+- from langchain_community.graphs.graph_document import GraphDocument
+- 将所有数据（文档内容，文本块 Documents，实体与关系）手动封装为 Node，Relationship，GraphDocument
+- 使用 langchain-neo4j graph.add_graph_documents 插入 GraphDocument 到数据库，指定 include_source，baseEntityLabel
+- 不会自动生成社区节点，及其关联的关系
+- 创建新的向量索引，用于向量检索
+
+**优势：**
+
+- 可控性强，可以精确控制提取的实体和关系。
+- 可以灵活地构建原始文档与文本块的关系，便于文档级别的操作。
+- 可以进行优化，比如批量处理、错误处理、事务管理等。
+
+### 增量更新管理
+
+- 文件变更检测，到知识图谱更新、嵌入更新、一致性验证、社区检测
+
+- 检测文件变更并更新图谱 - 通过IncrementalGraphUpdater实现
+
+  - 新增、修改文件嵌入更新、删除文件清理、图谱合并
+
+    文件的哈希值 + 文件注册表
+
+- 更新实体和Chunk的Embedding - 通过EmbeddingManager处理
+
+- 图谱合并，验证图谱一致性 - 使用GraphConsistencyValidator确保数据完整性
+
+  - 采用 MERGE 操作确保数据一致性
+  - 验证检查，图中异常的节点及关系（无关系的节点），并修复
+
+- 处理社区检测和摘要生成 - 通过社区检测算法和摘要工具
+
+- 支持手动编辑同步 - 使用ManualEditManager确保用户编辑不被覆盖
+
+  ```cypher
+  SET e.manual_edit = false
+  SET e.created_by = null
+  SET e.edited_by = null
+  SET e.system_generated = true
+  SET r.manual_edit = false
+  
+  // 通过Neo4j触发器（APOC插件）自动记录节点和关系的变更
+  CALL apoc.trigger.install
+  SET n.updated_at = datetime()
+  ```
+
+- 后台运行和定时调度 - 通过IncrementalUpdateScheduler实现自动化
+
+  - 基于时间阈值的调度决策系统
+  - 定时更新和按需更新两种模式
+
+- 
 
 ### ====
+
+
+
+### FastAPI 初始化
 
 **文件**：<mcfile name="main.py" path="f:\graph-rag-agent\server\main.py"></mcfile>
 
@@ -628,6 +753,9 @@ class HybridAgent(BaseAgent):
 ```
 
 ### 3.7 混合搜索工具实现流程
+
+- 执行推理
+- COT 思维链 + FewShot
 
 **文件**：<mcfile name="hybrid_tool.py" path="f:\graph-rag-agent\search\tool\hybrid_tool.py"></mcfile>
 

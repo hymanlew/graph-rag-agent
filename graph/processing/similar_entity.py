@@ -1,22 +1,35 @@
 import os
 import time
+# 导入Neo4j图数据科学库
 from graphdatascience import GraphDataScience
 from typing import Tuple, List, Any, Dict
 from dataclasses import dataclass
-
 from config.settings import similarity_threshold, BATCH_SIZE, GDS_MEMORY_LIMIT
 from graph.core import connection_manager, timer, get_performance_stats, print_performance_stats
 
+"""
+GraphDataScience 库允许使用纯 Python 代码来操作图数据、运行图算法以及构建机器学习管道，而无需编写复杂的 Cypher 查询。
+
+功能模块	    核心用途	                                关键技术点
+图投影与管理 	将数据库中的图数据加载到内存中进行高性能计算。	使用优化的内存格式，提升计算效率。
+图算法执行 	在图数据上运行各类分析算法，以发现洞见和模式。	提供超过60种算法，涵盖社区检测、中心性分析、路径发现、节点嵌入和链接预测等。
+机器学习管道 	构建端到端的图机器学习工作流。	            支持节点分类、链接预测等任务的管道，可进行特征工程、模型训练和预测。
+结果处理 	灵活保存和分析算法计算结果。	                可将结果写回数据库、以CSV格式导出或流式传输到其他应用。
+
+金融反欺诈：通过分析资金流转图，利用链接预测等算法识别潜在的欺诈团伙和异常交易模式。
+智能推荐系统：在用户-商品二部图上运行Personalized PageRank等算法，为用户发现可能感兴趣的商品或内容。
+社交网络分析：识别社交网络中的关键影响者（中心性分析）或发现潜在的社区结构（社区检测）。
+知识图谱丰富：利用图算法从已有的知识图谱中发掘隐藏的关系和潜在的新知识。
+"""
+
+# dataclass 会自动生成特殊方法（如 __init__、__repr__、__eq__ 等），它只是简化了类的初始化
+# property 才是自动实现 getter 和 setter，@dataclass 不会生成这些，且 Python 中通常不鼓励使用 getter/setter
+# 直接操作对应属性即可，不需要使用 @property
 @dataclass
 class GDSConfig:
     """
     Neo4j GDS(图数据科学库)配置参数
-    
-    数据结构设计：
-    - 使用Python dataclass简化数据管理和初始化
-    - 提供默认值并从环境变量和全局配置获取设置
-    - 实现__post_init__钩子支持配置的动态覆盖
-    
+
     配置参数说明：
     - uri/username/password: Neo4j数据库连接信息
     - similarity_threshold: 相似度阈值，影响KNN算法的结果精确度
@@ -31,23 +44,37 @@ class GDSConfig:
     word_edit_distance: int = 3
     batch_size: int = 500
     memory_limit: int = 6  # 单位：GB
-    
+
+    # __post_init__ 是 @dataclass 提供的一个钩子方法。当自动生成 __init__ 方法后，会被自动调用。
+    # 这个方法的主要用途是进行一些初始化后的处理，比如验证数据、计算派生属性等。
     def __post_init__(self):
-        # 如果配置文件中有设置则使用配置值
+
+        # globals() 是 Python内 置函数，不需要导入任何包。返回当前模块中定义的所有全局变量（包括函数、类、变量等）字典
+        # 只返回当前模块的全局变量，不推荐使用
         if 'BATCH_SIZE' in globals() and BATCH_SIZE:
             self.batch_size = BATCH_SIZE
             
         if 'GDS_MEMORY_LIMIT' in globals() and GDS_MEMORY_LIMIT:
             self.memory_limit = GDS_MEMORY_LIMIT
 
+"""
+在 Neo4j 中，弱连通分量（WCC）是图论中的概念，指在忽略关系方向的情况下，节点之间可以互相到达的最大子图。
+即忽略关系方向的情况下，整个图是连通的，那么该图就是弱连通的。
+在无向图中，连通分量就是弱连通分量。
+
+WCC 算法用于找到图中的连通组件，每个组件内的节点都是连通的（通过任意边），而不同组件之间没有连接。
+此类代码 WCC 是基于"SIMILAR"关系（边）来构建连通分量的。这里"SIMILAR"关系可以理解为无向的，或者即使是有向的，在WCC中也会忽略方向。
+
+应用场景：WCC通常用于网络分析中的基础连通性分析，例如在社会网络中找出互相关联的群体，在推荐系统中找出连通的物品集等。
+"""
 class SimilarEntityDetector:
     """
     相似实体检测器，使用Neo4j GDS库实现实体相似性分析和社区识别。
     
     核心功能模块：
     1. 实体投影管理：创建内存中的实体关系子图
-    2. 相似度计算：使用KNN算法识别相似实体并创建关系
-    3. 社区检测：通过WCC算法将相似实体分组到社区
+    2. 相似度计算：使用 KNN 算法识别相似实体并创建关系
+    3. 社区检测：通过 WCC 弱连通分量算法将相似实体分组到社区
     4. 重复实体识别：基于社区和文本相似度找出潜在重复
     
     技术特点：
@@ -92,7 +119,14 @@ class SimilarEntityDetector:
     def _create_indexes(self):
         """
         创建必要的索引以优化查询性能
-        
+
+        langchain-neo4j graph.add_graph_documents 方法，设置 baseEntityLabel=true，它会将所有的实体节点都添加一个 __Entity__ 标签，
+        并会为这些节点计算一个弱连通分量（WCC）社区属性 e.wcc。
+        - 创建 WCC 索引：自动执行 CREATE INDEX IF NOT EXISTS FOR (e:\Entity`) ON (e.wcc)`
+        - 计算 WCC 社区：使用 Neo4j 的 GDS 图算法计算弱连通分量（WCC）
+        - 设置实体属性：为每个实体节点设置 wcc 属性及社区 ID
+        通过为每个节点分配一个 WCC 标识，可以将节点分组到不同的社区中。
+
         索引策略说明：
         1. 在实体ID上创建索引，加速实体查找和匹配
         2. 在社区属性(wcc)上创建索引，提高社区相关查询效率
@@ -199,8 +233,8 @@ class SimilarEntityDetector:
         使用KNN算法检测相似实体并创建SIMILAR关系
         
         算法原理：
-        KNN(K-Nearest Neighbors)算法查找每个实体的最相似邻居，基于嵌入向量的相似度。
-        算法为每个实体创建到其相似实体的SIMILAR关系，并存储相似度得分。
+        KNN(K-Nearest Neighbors)算法查找每个实体的最相似邻居，基于嵌入向量的相似度算法
+        为每个实体创建到其相似实体的SIMILAR关系，并存储相似度得分。
         
         实现特点：
         1. 双重操作：先使用mutate在内存中计算，再使用write写入数据库
@@ -291,7 +325,7 @@ class SimilarEntityDetector:
         具有相似关系的实体会被分配相同的社区ID，便于后续的重复检测。
         
         实现特点：
-        1. 基于SIMILAR关系网络构建社区
+        1. 基于SIMILAR（相似）关系网络构建社区
         2. 使用consecutiveIds优化存储和查询
         3. 实现降级机制处理可能的算法失败
         4. 返回详细的社区统计信息
@@ -469,7 +503,7 @@ class SimilarEntityDetector:
     @timer
     def process_entities(self) -> Tuple[List[Any], Dict[str, Any]]:
         """
-        执行完整的实体处理流程
+        执行完整的实体处理流程：社区检测、中心性分析、路径发现
         
         工作流程：
         1. 创建实体投影：将实体和关系加载到内存
@@ -478,12 +512,7 @@ class SimilarEntityDetector:
         4. 查找潜在重复：识别可能重复的实体组
         5. 资源清理：释放内存中的投影图
         6. 性能统计：生成详细的处理时间和结果统计
-        
-        错误处理策略：
-        - 每个步骤都有明确的错误检查和异常捕获
-        - 在任何步骤失败时都能安全退出
-        - 确保无论处理成功或失败，都能释放资源
-        
+
         Returns:
             Tuple[List[Any], Dict[str, Any]]: 
                 - 潜在重复实体的列表

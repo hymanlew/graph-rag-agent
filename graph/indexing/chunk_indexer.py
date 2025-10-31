@@ -1,24 +1,7 @@
-"""
-Graph-RAG Agent 文本块索引管理模块
-
-此模块实现了文本块(Chunk)索引的创建和管理功能，是Graph-RAG系统中负责
-向量检索的核心组件之一。主要功能包括：
-
-1. 文本块向量嵌入计算与存储
-2. Neo4j图数据库索引优化
-3. 批量处理机制，提高大规模文本处理效率
-4. 并行计算优化，充分利用多核处理能力
-5. 错误处理和降级策略，确保系统稳定性
-
-该模块通过计算文本块的向量表示并创建索引，为系统提供了高效的语义相似度搜索能力，
-是实现RAG(检索增强生成)功能的基础组件。
-"""
-
 import time
 import concurrent.futures
 from typing import List, Dict, Any, Optional
 from langchain_community.vectorstores import Neo4jVector
-
 from model.get_models import get_embeddings_model
 from graph.core import BaseIndexer, connection_manager
 from config.settings import CHUNK_BATCH_SIZE, MAX_WORKERS as DEFAULT_MAX_WORKERS
@@ -32,6 +15,8 @@ class ChunkIndexManager(BaseIndexer):
     - 计算文本块的向量嵌入(embedding)并存储
     - 提供向量存储接口，支持后续的相似度检索
     - 优化数据库查询性能，提高索引效率
+    - 批量处理机制，并行计算优化，提高大规模文本处理效率
+    - 错误处理和降级策略，确保系统稳定性
     
     实现思路：
     - 继承BaseIndexer基类，复用批量处理框架

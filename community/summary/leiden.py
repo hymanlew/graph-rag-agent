@@ -43,14 +43,7 @@ class LeidenSummarizer(BaseSummarizer):
         该方法采用自适应策略，根据社区数量选择一次性查询或分批查询。
         
         返回：
-            社区信息列表，每个社区包含communityId、nodes和rels字段
-            
-        处理流程：
-        1. 查询社区总数
-        2. 根据社区数量选择适当的查询策略
-        3. 获取社区内的实体和实体间关系
-        4. 格式化结果数据
-        5. 异常处理和回退策略
+            社区信息列表，每个社区包含communityId、nodes和 rels（节点关系）字段
         """
         start_time = time.time()
         print("收集Leiden社区信息...")
@@ -68,7 +61,8 @@ class LeidenSummarizer(BaseSummarizer):
                 return []
                 
             print(f"找到 {community_count} 个Leiden社区，开始收集详细信息")
-            
+
+            # 根据社区数量选择适当的查询策略
             # 当社区数量超过阈值时使用批处理
             if community_count > 1000:
                 return self._collect_info_in_batches(community_count)
@@ -126,7 +120,6 @@ class LeidenSummarizer(BaseSummarizer):
     
     def _collect_info_in_batches(self, total_count: int) -> List[Dict]:
         """分批收集社区信息
-        
         当社区数量较多时，采用分批处理策略收集社区信息，避免单次查询过大导致超时。
         
         参数：
