@@ -145,20 +145,12 @@ async def test_agent_stream(agent, agent_name, query, thread_id, show_thinking=F
         }
 
 async def run_stream_tests():
-    """运行所有流式测试
-    
-    功能:
-    - 创建所有代理实例
-    - 遍历测试所有查询
-    - 收集并汇总测试结果
-    - 计算并显示性能指标
-    """
+    """运行所有流式测试"""
     print("\n===== 开始流式Agent测试 =====\n")
     
     # 创建所有agent实例
-    # 注意：默认只启用了FusionGraphRAGAgent，其他代理被注释掉
     agents = [
-        # {"name": "DeepResearchAgent", "instance": DeepResearchAgent(use_deeper_tool=True)},
+        {"name": "DeepResearchAgent", "instance": DeepResearchAgent(use_deeper_tool=True)},
         # {"name": "NaiveRagAgent", "instance": NaiveRagAgent()},
         # {"name": "GraphAgent", "instance": GraphAgent()},
         # {"name": "HybridAgent", "instance": HybridAgent()},
@@ -180,11 +172,7 @@ async def run_stream_tests():
             thread_id = f"stream_{agent_name}_{int(time.time())}"
             
             # 执行流式测试
-            result = await test_agent_stream(agent, agent_name, query, thread_id)
-            results.append(result)
-            
             # 只有DeepResearchAgent支持思考过程测试
-            # 如果启用了DeepResearchAgent，会额外测试其思考过程的流式输出
             if agent_name == "DeepResearchAgent":
                 print("\n--- 测试思考过程流式输出 ---")
                 thinking_result = await test_agent_stream(
@@ -192,6 +180,9 @@ async def run_stream_tests():
                     f"{thread_id}_thinking", show_thinking=True
                 )
                 results.append(thinking_result)
+            else:
+                result = await test_agent_stream(agent, agent_name, query, thread_id)
+                results.append(result)
     
     # 打印测试总结报告
     successful_tests = sum(1 for r in results if r.get("success", False))  # 计算成功测试数量

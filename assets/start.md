@@ -63,7 +63,9 @@ pip install -r requirements.txt
 pip install -e .
 ```
 
-## 知识图谱原始文件放置
+## 知识图谱配置（`config/settings.py`）
+
+## 原始文件放置
 
 请将原始文件放入 `files/` 文件夹，支持有目录的存放。当前支持以下格式（采用简单分块，后续会优化处理方式）：
 
@@ -77,8 +79,6 @@ pip install -e .
 - JSON（结构化文本）
 - YAML/YML（配置文件）
 ```
-
-## 知识图谱配置（`config/settings.py`）
 
 ## 构建知识图谱
 
@@ -99,12 +99,29 @@ python build/incremental_update.py --daemon
 
 ## 知识图谱搜索测试
 
+Test 模块提供了对多种智能代理 (Agent) 的测试接口，支持流式和非流式两种输出模式，便于开发者比较不同代理的性能和效果差异。
+
+### 支持的 Agent 类型
+
+1. **DeepResearchAgent**：深度研究代理，能够进行深入分析并展示思考过程
+2. **NaiveRagAgent**：基础检索增强生成代理
+3. **GraphAgent**：基于知识图谱的代理
+4. **HybridAgent**：混合型代理，结合多种策略
+5. **FusionGraphRAGAgent**：融合图谱和检索增强的代理
+
+### 核心功能
+
+1. **思考过程展示**：支持可视化代理的思考和推理过程
+2. **执行轨迹追踪**：记录代理决策链和执行步骤
+3. **多类型输出格式**：支持纯文本、字典和流式三种输出格式
+4. **批量测试**：可一次运行所有代理测试，便于对比
+
 ```bash
 cd graph-rag-agent/test
 
 # 查询前可以注释掉不想测试的Agent，防止运行过慢
 
-# 非流式查询
+# 非流式查询 - 标准输出
 python search_without_stream.py
 
 # 流式查询

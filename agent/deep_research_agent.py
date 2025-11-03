@@ -4,12 +4,10 @@ from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.output_parsers import StrOutputParser
 import asyncio
 import re
-
 from config.prompt import LC_SYSTEM_PROMPT
 from config.settings import response_type
 from search.tool.deeper_research_tool import DeeperResearchTool
-from search.tool.deep_research_tool import DeepResearchTool 
-
+from search.tool.deep_research_tool import DeepResearchTool
 from agent.base import BaseAgent
 
 

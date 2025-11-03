@@ -30,6 +30,12 @@ flowchart TD
 
 ### 2.2 代理处理流程
 
+- **DeepResearchAgent**：深度研究代理，能够进行深入分析并展示思考过程
+- **NaiveRagAgent**：基础检索增强生成代理
+- **GraphAgent**：基于知识图谱的代理
+- **HybridAgent**：混合型代理，结合多种策略
+- **FusionGraphRAGAgent**：融合图谱和检索增强的代理
+
 ```mermaid
 flowchart TD
     A[代理接收查询<br>BaseAgent.ask] --> B[提取关键词<br>_extract_keywords]
@@ -363,22 +369,21 @@ result = self.gds.leiden.write(
 - 可以灵活地构建原始文档与文本块的关系，便于文档级别的操作。
 - 可以进行优化，比如批量处理、错误处理、事务管理等。
 
-### 增量更新管理
+### 3.3 增量更新管理
 
 - 文件变更检测，到知识图谱更新、嵌入更新、一致性验证、社区检测
 
 - 检测文件变更并更新图谱 - 通过IncrementalGraphUpdater实现
 
   - 新增、修改文件嵌入更新、删除文件清理、图谱合并
-
-    文件的哈希值 + 文件注册表
-
+  - **文件的哈希值 + 文件注册表**
+  
 - 更新实体和Chunk的Embedding - 通过EmbeddingManager处理
 
 - 图谱合并，验证图谱一致性 - 使用GraphConsistencyValidator确保数据完整性
 
-  - 采用 MERGE 操作确保数据一致性
-  - 验证检查，图中异常的节点及关系（无关系的节点），并修复
+  - **采用 MERGE 操作确保数据一致性**
+  - 验证检查，**图中异常的节点及关系（无关系的节点），并修复**
 
 - 处理社区检测和摘要生成 - 通过社区检测算法和摘要工具
 
@@ -398,8 +403,9 @@ result = self.gds.leiden.write(
 
 - 后台运行和定时调度 - 通过IncrementalUpdateScheduler实现自动化
 
-  - 基于时间阈值的调度决策系统
-  - 定时更新和按需更新两种模式
+  - 管理文件变更检测、实体嵌入更新、社区检测、图结构完整性验证等的更新频率
+  - **基于时间阈值的调度决策系统**
+  - 定时更新和按需更新两种模式，自定义调度策略
 
 - 
 
@@ -407,11 +413,11 @@ result = self.gds.leiden.write(
 
 
 
-### FastAPI 初始化
+### 3.4 FastAPI 请求处理
 
-**文件**：<mcfile name="main.py" path="f:\graph-rag-agent\server\main.py"></mcfile>
+初始化文件：<mcfile name="main.py" path="f:\graph-rag-agent\server\main.py"></mcfile>
 
-**流程说明**：
+流程说明：
 
 1. 导入必要的库和模块
 2. 创建FastAPI应用实例
@@ -420,97 +426,20 @@ result = self.gds.leiden.write(
 5. 配置关闭事件处理器
 6. 启动ASGI服务器
 
-**核心代码**：
-```python
-# 创建FastAPI应用
-app = FastAPI(
-    title="Graph-RAG Agent API",
-    description="基于知识图谱的检索增强生成智能助手API",
-    version="1.0.0"
-)
+API 处理流程：<mcfile name="chat.py" path="f:\graph-rag-agent\server\routers\chat.py"></mcfile>
 
-# 注册路由
-app.include_router(router, prefix="/api", tags=["API"])
+流程说明：
 
-# 初始化数据库连接
-db_manager = get_db_manager()
-driver = db_manager.get_driver()
-
-# 启动服务器
-if __name__ == "__main__":
-    uvicorn.run(
-        "server.main:app",
-        host="0.0.0.0",
-        port=8000,
-        reload=True
-    )
-```
-
-### 3.2 聊天API处理流程
-
-**文件**：<mcfile name="chat.py" path="f:\graph-rag-agent\server\routers\chat.py"></mcfile>
-
-**流程说明**：
 1. 接收用户请求，包括消息内容、会话ID、代理类型等参数
 2. 调用process_chat函数处理请求
 3. 根据debug参数决定是否返回执行日志
 4. 序列化响应结果返回给用户
 
-**核心代码**：
-```python
-@router.post("/chat", response_model=ChatResponse)
-async def chat(
-    request: ChatRequest,
-    debug: bool = False,
-    use_deeper_tool: bool = True,
-    show_thinking: bool = False
-):
-    """
-    处理聊天请求，返回非流式响应
-    
-    Args:
-        request: 聊天请求数据，包含消息和会话ID
-        debug: 是否启用调试模式
-        use_deeper_tool: 是否使用增强版研究工具
-        show_thinking: 是否显示思考过程
-        
-    Returns:
-        ChatResponse: 聊天响应对象
-    """
-    # 使用装饰器测量性能
-    with measure_performance():
-        # 调用服务层处理聊天请求
-        result = await process_chat(
-            message=request.message,
-            session_id=request.session_id,
-            debug=debug,
-            agent_type=request.agent_type,
-            use_deeper_tool=use_deeper_tool,
-            show_thinking=show_thinking
-        )
-    
-    # 格式化响应
-    if debug:
-        # 调试模式，格式化执行日志
-        execution_logs = []
-        if "execution_logs" in result:
-            for log in result["execution_logs"]:
-                execution_logs.append(serialize_log_entry(log))
-        return ChatResponse(
-            answer=result["answer"],
-            raw_thinking=result.get("raw_thinking", ""),
-            execution_logs=execution_logs
-        )
-    else:
-        # 普通模式，仅返回回答
-        return ChatResponse(answer=result["answer"])
-```
+### 3.5 聊天服务处理流程
 
-### 3.3 聊天服务处理流程
+文件：<mcfile name="chat_service.py" path="f:\graph-rag-agent\server\services\chat_service.py"></mcfile>
 
-**文件**：<mcfile name="chat_service.py" path="f:\graph-rag-agent\server\services\chat_service.py"></mcfile>
-
-**流程说明**：
+流程说明：
 1. 获取并发锁，确保同一用户请求串行处理
 2. 根据指定类型获取代理实例
 3. 检查快速路径缓存，优化性能
@@ -518,7 +447,7 @@ async def chat(
 5. 处理思考过程（仅深度研究代理支持）
 6. 返回处理结果
 
-**核心代码**：
+核心代码：
 ```python
 async def process_chat(
     message: str,
@@ -530,15 +459,20 @@ async def process_chat(
 ):
     """
     处理聊天请求的核心逻辑
+    request: 聊天请求数据，包含消息和会话ID
+    debug: 是否启用调试模式
+    use_deeper_tool: 是否使用增强版研究工具
+    show_thinking: 是否显示思考过程
     """
     # 生成锁的键
     lock_key = f"{session_id}_chat"
     
     # 获取锁，避免并发处理
     chat_manager.acquire_lock(lock_key)
+    # 线程锁 self.agent_lock = threading.RLock()
     
     try:
-        # 获取指定类型的代理实例
+        # 获取指定类型的代理实例，为每个会话创建独立的代理实例，及会话管理
         selected_agent = agent_manager.get_agent(agent_type, session_id)
         
         # 对深度研究代理进行特殊配置
@@ -579,129 +513,55 @@ async def process_chat(
         chat_manager.cleanup_expired_locks()
 ```
 
-### 3.4 代理管理流程
+### 3.6 基础代理服务实现
 
-**文件**：<mcfile name="agent_service.py" path="f:\graph-rag-agent\server\services\agent_service.py"></mcfile>
+**基础代理文件**：<mcfile name="base.py" path="f:\graph-rag-agent\agent\base.py"></mcfile>
 
-**流程说明**：
-1. 注册和管理多种类型的代理
-2. 为每个会话创建独立的代理实例
-3. 提供代理的获取和会话管理功能
-4. 支持清除会话历史
-
-**核心代码**：
-```python
-class AgentManager:
-    """
-    代理管理器类，负责创建和管理不同类型的代理实例
-    """
-    
-    def __init__(self):
-        # 导入各种Agent类
-        from agent.graph_agent import GraphAgent
-        from agent.hybrid_agent import HybridAgent
-        from agent.naive_rag_agent import NaiveRagAgent
-        from agent.deep_research_agent import DeepResearchAgent
-        from agent.fusion_agent import FusionGraphRAGAgent
-        
-        # 初始化Agent类映射
-        self.agent_classes = {
-            "graph_agent": GraphAgent,
-            "hybrid_agent": HybridAgent,
-            "naive_rag_agent": NaiveRagAgent,
-            "deep_research_agent": DeepResearchAgent,
-            "fusion_agent": FusionGraphRAGAgent,
-        }
-        
-        # 代理实例池
-        self.agent_instances = {}
-        
-        # 线程锁
-        self.agent_lock = threading.RLock()
-    
-    def get_agent(self, agent_type: str, session_id: str = "default"):
-        """
-        获取指定类型的代理实例，对每个会话使用独立实例
-        """
-        # 验证代理类型
-        if agent_type not in self.agent_classes:
-            raise ValueError(f"未知的agent类型: {agent_type}")
-        
-        # 使用代理类型和会话ID组合作为实例键
-        instance_key = f"{agent_type}:{session_id}"
-        
-        # 使用线程锁确保并发安全
-        with self.agent_lock:
-            # 创建新实例或返回现有实例
-            if instance_key not in self.agent_instances:
-                self.agent_instances[instance_key] = self.agent_classes[agent_type]()
-            
-            return self.agent_instances[instance_key]
-```
-
-### 3.5 基础代理实现流程
-
-**文件**：<mcfile name="base.py" path="f:\graph-rag-agent\agent\base.py"></mcfile>
-
-**流程说明**：
-1. 初始化语言模型、嵌入模型和缓存系统
+流程说明：
+1. 初始化语言模型、嵌入模型、记忆系统（MemorySaver()）和缓存系统（CacheManager）
 2. 设置代理工作流图，定义状态机和处理节点
 3. 实现代理的核心方法，如ask、ask_stream等
 4. 提供日志记录和性能监控功能
 
-**核心代码**：
+核心代码：
+
 ```python
-class BaseAgent(ABC):
-    """
-    代理系统抽象基类，为所有具体代理实现提供统一接口
-    """
-    
-    def __init__(self, cache_dir="./cache", memory_only=False):
-        # 初始化语言模型
-        self.llm = get_llm_model()
-        self.stream_llm = get_stream_llm_model()
-        self.embeddings = get_embeddings_model()
-        
-        # 初始化记忆系统
-        self.memory = MemorySaver()
-        self.execution_log = []
-        
-        # 初始化缓存系统
-        self.cache_manager = CacheManager(
-            key_strategy=ContextAwareCacheKeyStrategy(),
-            storage_backend=HybridCacheBackend(...),
-            cache_dir=cache_dir,
-            memory_only=memory_only
-        )
-        
-        # 设置代理工具
-        self.tools = self._setup_tools()
-        
-        # 设置工作流图
-        self._setup_graph()
-    
-    @abstractmethod
-    def _setup_tools(self) -> List:
-        """配置代理可用的工具集"""
-        pass
-    
-    def _setup_graph(self):
-        """设置代理工作流图"""
-        # 定义状态类型
-        class AgentState(TypedDict):
-            messages: Annotated[Sequence[BaseMessage], add_messages]
-        
+# 初始化记忆系统
+self.memory = MemorySaver()
+self.execution_log = []
+
+# 初始化缓存系统
+self.cache_manager = CacheManager(
+    key_strategy=ContextAwareCacheKeyStrategy(),
+    storage_backend=HybridCacheBackend(...),
+    cache_dir=cache_dir,
+    memory_only=memory_only
+)
+# 设置代理工具
+self.tools = self._setup_tools()
+# 设置工作流图
+self._setup_graph()
+
+@abstractmethod
+def _setup_tools(self) -> List:
+    """配置代理可用的工具集"""
+    pass
+
+def _setup_graph(self):
+    """设置代理工作流图"""
+    # 定义状态类型
+    class AgentState(TypedDict):
+        messages: Annotated[Sequence[BaseMessage], add_messages]
+
         # 创建工作流图
         workflow = StateGraph(AgentState)
         # 添加处理节点和边
         # ...
 ```
 
-### 3.6 混合代理实现流程
+**混合代理实现文件**：<mcfile name="hybrid_agent.py" path="f:\graph-rag-agent\agent\hybrid_agent.py"></mcfile>
 
-**文件**：<mcfile name="hybrid_agent.py" path="f:\graph-rag-agent\agent\hybrid_agent.py"></mcfile>
-
-**流程说明**：
+流程说明：
 1. 初始化混合搜索工具
 2. 配置代理可用的工具列表
 3. 设置工作流从检索到生成的边
@@ -714,7 +574,6 @@ class HybridAgent(BaseAgent):
     """
     混合检索Agent实现，结合多种搜索方法
     """
-    
     def __init__(self):
         # 初始化混合搜索工具
         self.search_tool = HybridSearchTool()
@@ -760,6 +619,7 @@ class HybridAgent(BaseAgent):
 **文件**：<mcfile name="hybrid_tool.py" path="f:\graph-rag-agent\search\tool\hybrid_tool.py"></mcfile>
 
 **流程说明**：
+
 1. 初始化检索参数
 2. 设置处理链，包括查询处理链和关键词提取链
 3. 实现双级检索策略，结合低级细节检索和高级主题检索

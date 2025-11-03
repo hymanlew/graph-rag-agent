@@ -7,7 +7,6 @@ import re
 import os
 
 from langchain_core.tools import BaseTool
-
 from model.get_models import get_llm_model, get_embeddings_model
 from graph.core import connection_manager
 from config.prompt import (
@@ -29,6 +28,7 @@ from search.tool.reasoning.kg_builder import DynamicKnowledgeGraphBuilder
 from search.tool.reasoning.evidence import EvidenceChainTracker
 from search.tool.reasoning.chain_of_exploration import ChainOfExplorationSearcher
 from search.tool.reasoning.validator import complexity_estimate
+
 
 class DeeperResearchTool:
     """
