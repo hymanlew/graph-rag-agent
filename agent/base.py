@@ -42,20 +42,12 @@ class BaseAgent(ABC):
         参数:
             cache_dir: 缓存目录路径，用于存储磁盘缓存结果
             memory_only: 是否仅使用内存缓存模式，True表示不使用磁盘持久化
-        
-        初始化过程包括：
-        1. 加载语言模型和嵌入模型
-        2. 创建记忆管理器，用于保存对话历史
-        3. 初始化多级缓存系统
-        4. 配置性能监控
-        5. 设置代理工作流图
         """
         # 初始化语言模型组件
         # 获取普通LLM模型，用于生成完整响应
         self.llm = get_llm_model()
         # 获取流式LLM模型，用于增量生成响应，支持实时展示
         self.stream_llm = get_stream_llm_model()
-        # 获取嵌入模型，用于文本向量化，支持语义相似度计算
         self.embeddings = get_embeddings_model()
         
         # 初始化记忆系统
@@ -103,13 +95,8 @@ class BaseAgent(ABC):
     def _setup_tools(self) -> List:
         """
         配置代理可用的工具集
-        
         抽象方法，由具体的代理实现类负责实现。该方法应返回代理可使用的工具列表，
         这些工具将用于执行特定任务如检索、知识图谱查询、数据分析或其他领域特定操作。
-        
-        工具是代理系统的核心能力扩展点，每个工具通常实现一个特定的功能，
-        如网络搜索、数据库查询、文件操作或API调用等。代理可以根据任务需求
-        选择合适的工具来完成工作。
         
         返回:
             List: 代理可以使用的工具对象列表，每个工具应符合LangChain工具规范
@@ -124,10 +111,6 @@ class BaseAgent(ABC):
         """
         设置代理工作流图，定义状态机和处理节点
         
-        该方法创建代理的工作流状态机，使用LangGraph构建有向图结构，
-        定义各个处理节点及其转换关系。工作流是代理处理查询的骨架，
-        决定了信息如何在不同处理阶段间流转。
-        
         工作流主要组成部分：
         1. 状态定义：AgentState类型，确定工作流中传递的数据结构
         2. 核心节点：
@@ -137,7 +120,7 @@ class BaseAgent(ABC):
         3. 转换逻辑：定义节点间的跳转条件和触发规则
         4. 工作流编译：生成可执行的状态机实例
         
-        子类可通过重写_add_retrieval_edges方法自定义检索到生成的流程，
+        子类可通过重写 _add_retrieval_edges 方法自定义检索到生成的流程，
         以实现特定代理所需的复杂处理逻辑。
         """
         # 定义状态类型 - 工作流中传递的数据结构
@@ -147,8 +130,6 @@ class BaseAgent(ABC):
 
         # 创建工作流图 - 使用StateGraph构建状态机
         workflow = StateGraph(AgentState)
-        
-        # 添加核心处理节点
         workflow.add_node("agent", self._agent_node)  # 代理决策节点
         workflow.add_node("retrieve", ToolNode(self.tools))  # 工具调用/检索节点
         workflow.add_node("generate", self._generate_node)  # 回答生成节点
@@ -166,11 +147,7 @@ class BaseAgent(ABC):
         
         # 添加从检索到生成的边 - 这个逻辑由子类实现自定义流程
         self._add_retrieval_edges(workflow)
-        
-        # 从生成到结束的边
         workflow.add_edge("generate", END)
-        
-        # 编译图 - 生成可执行的工作流
         self.graph = workflow.compile(checkpointer=self.memory)  # 使用memory作为检查点保存器
     
     async def _stream_process(self, inputs: Dict[str, Any], config: Dict[str, Any]) -> AsyncGenerator[str, None]:
@@ -308,14 +285,6 @@ class BaseAgent(ABC):
             
         返回:
             Dict: 更新后的状态，包含代理的决策结果和生成的消息
-            
-        处理流程:
-        1. 从状态中提取消息列表
-        2. 分析最新的用户消息，提取关键词
-        3. 增强用户消息，添加关键词元数据
-        4. 使用绑定工具的LLM模型分析消息
-        5. 记录执行日志
-        6. 返回更新后的状态
         """
         messages = state["messages"]
         
@@ -383,13 +352,6 @@ class BaseAgent(ABC):
             
         返回:
             Dict: 包含生成的回答消息的状态
-            
-        主要职责:
-        1. 分析工作流状态中的信息，特别是检索到的工具执行结果
-        2. 将检索结果与用户原始查询相结合
-        3. 生成逻辑连贯、信息准确的回答
-        4. 确保回答格式规范，便于用户理解
-        5. 记录回答生成过程的日志信息
         
         实现考虑因素:
             - 回答的相关性和准确性

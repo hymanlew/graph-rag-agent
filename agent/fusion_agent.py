@@ -19,7 +19,6 @@ from model.get_models import get_embeddings_model
 class FusionGraphRAGAgent(BaseAgent):
     """
     Fusion GraphRAG Agent
-    
     基于多Agent协作架构的增强型GraphRAGAgent，集成了多种搜索策略和知识融合方法。
     提供图谱感知、社区结构、Chain of Exploration等高级功能，实现更深度的知识检索和推理。
     

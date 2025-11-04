@@ -8,7 +8,6 @@ class CacheStorageBackend(ABC):
     
     定义了缓存存储的统一接口，允许实现不同的存储策略
     遵循开闭原则，便于扩展新的存储后端类型
-    所有具体缓存实现必须继承此类并实现所有抽象方法
     """
     
     @abstractmethod

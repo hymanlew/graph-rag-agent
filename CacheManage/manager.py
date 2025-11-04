@@ -23,9 +23,7 @@ load_dotenv()
 class CacheManager:
     """
     统一缓存管理器，提供高级缓存功能和向量相似性匹配
-    
-    这是整个缓存系统的核心组件，负责协调缓存键策略、存储后端和向量相似性匹配器。
-    
+
     核心功能：
     1. 多级缓存查找（精确匹配 + 语义相似匹配）
     2. 可插拔的缓存键生成策略
@@ -53,9 +51,7 @@ class CacheManager:
                  max_vectors: int = 10000):
         """
         初始化缓存管理器
-        
-        此初始化方法配置缓存系统的核心组件，允许灵活的缓存策略定制。
-        
+
         参数:
             key_strategy: 缓存键策略，决定如何从查询生成缓存键
                           默认为SimpleCacheKeyStrategy，可根据需求替换为其他策略
@@ -141,10 +137,7 @@ class CacheManager:
                               max_memory_size, max_disk_size) -> CacheStorageBackend:
         """
         创建适合需求的存储后端
-        
-        根据配置选择或创建合适的存储后端实现
-        支持自定义后端、纯内存后端和混合后端
-        
+
         参数:
             storage_backend: 自定义存储后端
             memory_only: 是否仅使用内存
@@ -172,7 +165,6 @@ class CacheManager:
     def _get_consistent_key(self, query: str, **kwargs) -> str:
         """
         生成一致的缓存键
-        
         使用配置的缓存键策略为查询生成唯一标识
         确保相同查询在相同上下文中生成相同的键
         
@@ -188,9 +180,7 @@ class CacheManager:
     def _extract_context_info(self, **kwargs) -> Dict[str, Any]:
         """
         提取上下文信息用于向量匹配
-        
-        从参数中提取会话ID、关键词等上下文信息，
-        用于增强向量相似性匹配的相关性
+        从参数中提取会话ID、关键词等上下文信息，用于增强向量相似性匹配的相关性
         
         参数:
             **kwargs: 可能包含上下文信息的关键字参数
@@ -595,18 +585,9 @@ class CacheManager:
     def validate_answer(self, query: str, answer: str, validator: Callable[[str, str], bool] = None, **kwargs) -> bool:
         """
         验证答案质量
-        
         确保返回给用户的答案满足基本质量要求，防止低质量缓存被使用。
         这个方法实现了多级验证策略，优先使用缓存元数据，然后是自定义验证器，最后是默认验证逻辑。
-        
-        验证流程：
-        1. 生成缓存键并查找对应的缓存项
-        2. 如果缓存存在且已被用户验证，直接通过验证
-        3. 检查缓存质量分数，负分缓存直接不通过
-        4. 如果提供了自定义验证器，使用它进行验证
-        5. 否则使用默认验证逻辑（长度检查+关键词匹配）
-        6. 如果缓存不存在，直接验证提供的答案
-        
+
         参数:
             query: 查询字符串，原始用户查询
             answer: 要验证的答案内容
@@ -646,18 +627,14 @@ class CacheManager:
         if validator:
             return validator(query, answer)
         
-        # 使用默认验证逻辑
+        # 使用默认验证逻辑，长度检查+关键词匹配
         return self._default_validation(query, answer)
     
     def _default_validation(self, query: str, answer: str) -> bool:
         """
-        默认验证逻辑
-        
-        实现简单但有效的答案质量验证，包含两个关键检查：
-        
+        默认验证逻辑，实现简单但有效的答案质量验证，包含两个关键检查：
         1. 长度验证：确保答案有足够的内容，不是简单的短语或空响应
         2. 相关性验证：确保答案包含查询中的关键词，避免返回完全不相关的内容
-        
         这些检查虽然简单，但能有效过滤掉低质量或不相关的缓存结果。
         
         参数:

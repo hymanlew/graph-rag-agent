@@ -6,8 +6,7 @@ class ContextAwareCacheKeyStrategy(CacheKeyStrategy):
     """
     上下文感知的缓存键策略，考虑会话历史
     
-    这种策略通过将查询与其会话上下文结合来生成缓存键
-    可以区分相同查询在不同上下文中的不同含义
+    将查询与其会话上下文结合来生成缓存键，可以区分相同查询在不同上下文中的不同含义。
     适用于需要上下文理解的对话场景
     """
     
@@ -28,9 +27,7 @@ class ContextAwareCacheKeyStrategy(CacheKeyStrategy):
     
     def update_history(self, query: str, thread_id: str = "default", max_history: int = 10):
         """
-        更新会话历史
-        
-        将新的查询添加到会话历史中，维护上下文信息
+        更新会话历史，将新的查询添加到会话历史中，维护上下文信息
         
         参数:
             query: 当前查询
@@ -55,9 +52,7 @@ class ContextAwareCacheKeyStrategy(CacheKeyStrategy):
     
     def generate_key(self, query: str, **kwargs) -> str:
         """
-        生成上下文感知的缓存键
-        
-        通过结合会话ID、上下文历史、版本号和查询内容生成唯一键
+        生成上下文感知的缓存键，通过结合会话ID、上下文历史、版本号和查询内容生成唯一键
         
         参数:
             query: 查询字符串

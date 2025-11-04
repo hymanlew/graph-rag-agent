@@ -7,7 +7,7 @@ class MemoryCacheBackend(CacheStorageBackend):
     """
     内存缓存后端实现
     
-    基于Python字典实现的内存缓存，使用LRU（Least Recently Used）淘汰策略
+    基于Python字典实现的内存缓存，使用LRU（Least Recently Used 最近最少使用）淘汰策略
     适用于对速度要求高、不需要持久化存储的场景
     限制最大项数以防止内存溢出
     """

@@ -369,7 +369,7 @@ result = self.gds.leiden.write(
 - 可以灵活地构建原始文档与文本块的关系，便于文档级别的操作。
 - 可以进行优化，比如批量处理、错误处理、事务管理等。
 
-### 3.3 增量更新管理
+### 3.4 增量更新管理
 
 - 文件变更检测，到知识图谱更新、嵌入更新、一致性验证、社区检测
 
@@ -407,9 +407,192 @@ result = self.gds.leiden.write(
   - **基于时间阈值的调度决策系统**
   - 定时更新和按需更新两种模式，自定义调度策略
 
-- 
+### 3.5 统一缓存管理
+
+#### 核心功能
+
+1. 多级缓存查找（精确匹配 + 语义相似匹配）
+2. 可插拔的（动态的）缓存键生成策略
+3. 可配置的存储后端（内存、磁盘、混合）
+4. 缓存质量控制和验证机制（缓存无数据 + 人工反馈更新机制）
+5. 性能指标收集（缓存无数据 + 人工反馈更新机制）
+6. 向量相似性匹配，支持语义级别的缓存查找
+
+#### 缓存设计模式
+
+- 策略模式（可插拨的，多态的）：用于缓存键生成策略，根据不同的需求或使用场景来生成不同 key
+  - 简单查询缓存：基于查询字符串内容生成缓存键，不考虑上下文
+  - 全局缓存键策略：仅使用查询内容生成缓存键，完全忽略会话ID，线程ID和其他上下文信息（将它们处理掉）
+  - 上下文感知的缓存策略：将查询与其会话上下文结合生成缓存键，且要区分线程会话、上下文历史、版本号、查询内容
+- 适配器模式（开闭原则，多态的）：用于不同存储后端的适配
+  - 内存缓存后端：python 字典存储 + LRU 最近最少使用策略
+  - 磁盘缓存后端：file + 元数据存储 + threading.RLock() 可重入锁 + 复合淘汰策略（访问频率+新近度+文件大小）
+  - 混合缓存后端实现（内存+磁盘）：多级缓存策略：先查内存，内存未命中再查磁盘
+- 装饰器模式：用于线程安全和性能监控
+  - 为缓存后端增加线程安全（threading.RLock() 可重入锁）：通过组合方式包装现有缓存存储后端，为其添加线程安全特性
+
+#### 答案质量验证
+
+目的是确保返回给用户的答案满足基本质量要求，防止低质量缓存被使用。采用多级验证策略，优先使用缓存元数据，然后是自定义验证器，最后是默认验证逻辑。
+
+- 缓存元数据：采用人工反馈更新机制
+- 自定义验证器：自定义的验证逻辑
+- 默认验证逻辑：答案长度检查 + 关键词匹配（相关性匹配）
+
+### 3.6 各种代理服务实现
+
+#### BaseAgent
+
+- 代理系统抽象基类，为所有具体代理实现提供统一接口和核心功能框架
+- 配置模型、多级缓存管理、工具绑定配置、代理工作流搭建
+- 代理工作流：
+  - 从状态中提取消息列表
+  - 分析最新的用户消息，提取关键词（LLM / ）
+  - 增强用户消息，添加关键词元数据
+  - 使用绑定工具的LLM模型分析消息
+  - 生成回答，并返回更新后的状态
+
+**DeepResearchAgent**：深度研究代理，能够进行深入分析并展示思考过程
+
+**NaiveRagAgent**：基础检索增强生成代理
+
+**GraphAgent**：基于知识图谱的代理
+
+**HybridAgent**：混合型代理，结合多种策略
+
+**FusionGraphRAGAgent**：融合图谱和检索增强的代理
+
+**基础代理文件**：<mcfile name="base.py" path="f:\graph-rag-agent\agent\base.py"></mcfile>
+
+流程说明：
+
+1. 初始化语言模型、嵌入模型、记忆系统（MemorySaver()）和缓存系统（CacheManager）
+2. 设置代理工作流图，定义状态机和处理节点
+3. 实现代理的核心方法，如ask、ask_stream等
+4. 提供日志记录和性能监控功能
+
+核心代码：
+
+**混合代理实现文件**：<mcfile name="hybrid_agent.py" path="f:\graph-rag-agent\agent\hybrid_agent.py"></mcfile>
+
+流程说明：
+
+1. 初始化混合搜索工具
+2. 配置代理可用的工具列表
+3. 设置工作流从检索到生成的边
+4. 实现关键词提取功能
+5. 实现生成回答节点的逻辑
+
+**核心代码**：
+
+```python
+class HybridAgent(BaseAgent):
+    """
+    混合检索Agent实现，结合多种搜索方法
+    """
+    def __init__(self):
+        # 初始化混合搜索工具
+        self.search_tool = HybridSearchTool()
+        # 设置缓存目录
+        self.cache_dir = "./cache/hybrid_agent"
+        # 调用父类构造函数
+        super().__init__(cache_dir=self.cache_dir)
+    
+    def _setup_tools(self) -> List:
+        """设置混合Agent使用的工具列表"""
+        return [
+            self.search_tool.get_tool(),
+            self.search_tool.get_global_tool(),
+        ]
+    
+    def _add_retrieval_edges(self, workflow):
+        """添加工作流中从检索到生成的边"""
+        workflow.add_edge("retrieve", "generate")
+    
+    def _extract_keywords(self, query: str) -> Dict[str, List[str]]:
+        """从查询中提取不同层级的关键词"""
+        # 检查缓存
+        cached_keywords = self.cache_manager.get(f"keywords:{query}")
+        if cached_keywords:
+            return cached_keywords
+        
+        try:
+            # 使用搜索工具提取关键词
+            keywords = self.search_tool.extract_keywords(query)
+            # 缓存结果
+            self.cache_manager.set(f"keywords:{query}", keywords)
+            return keywords
+        except Exception as e:
+            print(f"关键词提取失败: {e}")
+            return {"low_level": [], "high_level": []}
+```
+
+### 3.7 混合搜索工具实现流程
+
+- 执行推理
+- COT 思维链 + FewShot
+
+**文件**：<mcfile name="hybrid_tool.py" path="f:\graph-rag-agent\search\tool\hybrid_tool.py"></mcfile>
+
+**流程说明**：
+
+1. 初始化检索参数
+2. 设置处理链，包括查询处理链和关键词提取链
+3. 实现双级检索策略，结合低级细节检索和高级主题检索
+4. 融合检索结果生成综合答案
+
+**核心代码**：
+
+```python
+class HybridSearchTool(BaseSearchTool):
+    """
+    混合搜索工具，实现双级检索策略
+    """
+    
+    def __init__(self):
+        # 检索参数配置
+        self.entity_limit = 15
+        self.max_hop_distance = 2
+        self.top_communities = 3
+        # 调用父类构造函数
+        super().__init__(cache_dir="./cache/hybrid_search")
+        # 设置处理链
+        self._setup_chains()
+    
+    def _setup_chains(self):
+        """设置处理链"""
+        # 创建主查询处理链
+        self.query_prompt = ChatPromptTemplate.from_messages([
+            ("system", LC_SYSTEM_PROMPT),
+            ("human", """
+                ---分析报告---
+                ## 低级内容（实体详细信息）:
+                {low_level}
+                
+                ## 高级内容（主题和概念）:
+                {high_level}
+
+                用户的问题是：
+                {query}
+                
+                请综合利用上述信息回答问题...
+            """)
+        ])
+        
+        # 构建查询处理链
+        self.query_chain = self.query_prompt | self.llm | StrOutputParser()
+        
+        # 关键词提取链配置
+        # ...
+```
+
+### 
+
+
 
 ### ====
+
+
 
 
 
@@ -511,162 +694,6 @@ async def process_chat(
         # 释放锁
         chat_manager.release_lock(lock_key)
         chat_manager.cleanup_expired_locks()
-```
-
-### 3.6 基础代理服务实现
-
-**基础代理文件**：<mcfile name="base.py" path="f:\graph-rag-agent\agent\base.py"></mcfile>
-
-流程说明：
-1. 初始化语言模型、嵌入模型、记忆系统（MemorySaver()）和缓存系统（CacheManager）
-2. 设置代理工作流图，定义状态机和处理节点
-3. 实现代理的核心方法，如ask、ask_stream等
-4. 提供日志记录和性能监控功能
-
-核心代码：
-
-```python
-# 初始化记忆系统
-self.memory = MemorySaver()
-self.execution_log = []
-
-# 初始化缓存系统
-self.cache_manager = CacheManager(
-    key_strategy=ContextAwareCacheKeyStrategy(),
-    storage_backend=HybridCacheBackend(...),
-    cache_dir=cache_dir,
-    memory_only=memory_only
-)
-# 设置代理工具
-self.tools = self._setup_tools()
-# 设置工作流图
-self._setup_graph()
-
-@abstractmethod
-def _setup_tools(self) -> List:
-    """配置代理可用的工具集"""
-    pass
-
-def _setup_graph(self):
-    """设置代理工作流图"""
-    # 定义状态类型
-    class AgentState(TypedDict):
-        messages: Annotated[Sequence[BaseMessage], add_messages]
-
-        # 创建工作流图
-        workflow = StateGraph(AgentState)
-        # 添加处理节点和边
-        # ...
-```
-
-**混合代理实现文件**：<mcfile name="hybrid_agent.py" path="f:\graph-rag-agent\agent\hybrid_agent.py"></mcfile>
-
-流程说明：
-1. 初始化混合搜索工具
-2. 配置代理可用的工具列表
-3. 设置工作流从检索到生成的边
-4. 实现关键词提取功能
-5. 实现生成回答节点的逻辑
-
-**核心代码**：
-```python
-class HybridAgent(BaseAgent):
-    """
-    混合检索Agent实现，结合多种搜索方法
-    """
-    def __init__(self):
-        # 初始化混合搜索工具
-        self.search_tool = HybridSearchTool()
-        # 设置缓存目录
-        self.cache_dir = "./cache/hybrid_agent"
-        # 调用父类构造函数
-        super().__init__(cache_dir=self.cache_dir)
-    
-    def _setup_tools(self) -> List:
-        """设置混合Agent使用的工具列表"""
-        return [
-            self.search_tool.get_tool(),
-            self.search_tool.get_global_tool(),
-        ]
-    
-    def _add_retrieval_edges(self, workflow):
-        """添加工作流中从检索到生成的边"""
-        workflow.add_edge("retrieve", "generate")
-    
-    def _extract_keywords(self, query: str) -> Dict[str, List[str]]:
-        """从查询中提取不同层级的关键词"""
-        # 检查缓存
-        cached_keywords = self.cache_manager.get(f"keywords:{query}")
-        if cached_keywords:
-            return cached_keywords
-        
-        try:
-            # 使用搜索工具提取关键词
-            keywords = self.search_tool.extract_keywords(query)
-            # 缓存结果
-            self.cache_manager.set(f"keywords:{query}", keywords)
-            return keywords
-        except Exception as e:
-            print(f"关键词提取失败: {e}")
-            return {"low_level": [], "high_level": []}
-```
-
-### 3.7 混合搜索工具实现流程
-
-- 执行推理
-- COT 思维链 + FewShot
-
-**文件**：<mcfile name="hybrid_tool.py" path="f:\graph-rag-agent\search\tool\hybrid_tool.py"></mcfile>
-
-**流程说明**：
-
-1. 初始化检索参数
-2. 设置处理链，包括查询处理链和关键词提取链
-3. 实现双级检索策略，结合低级细节检索和高级主题检索
-4. 融合检索结果生成综合答案
-
-**核心代码**：
-```python
-class HybridSearchTool(BaseSearchTool):
-    """
-    混合搜索工具，实现双级检索策略
-    """
-    
-    def __init__(self):
-        # 检索参数配置
-        self.entity_limit = 15
-        self.max_hop_distance = 2
-        self.top_communities = 3
-        # 调用父类构造函数
-        super().__init__(cache_dir="./cache/hybrid_search")
-        # 设置处理链
-        self._setup_chains()
-    
-    def _setup_chains(self):
-        """设置处理链"""
-        # 创建主查询处理链
-        self.query_prompt = ChatPromptTemplate.from_messages([
-            ("system", LC_SYSTEM_PROMPT),
-            ("human", """
-                ---分析报告---
-                ## 低级内容（实体详细信息）:
-                {low_level}
-                
-                ## 高级内容（主题和概念）:
-                {high_level}
-
-                用户的问题是：
-                {query}
-                
-                请综合利用上述信息回答问题...
-            """)
-        ])
-        
-        # 构建查询处理链
-        self.query_chain = self.query_prompt | self.llm | StrOutputParser()
-        
-        # 关键词提取链配置
-        # ...
 ```
 
 ### 3.8 数据库连接管理流程

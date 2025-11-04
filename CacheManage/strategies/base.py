@@ -3,9 +3,7 @@ from abc import ABC, abstractmethod
 
 class CacheKeyStrategy(ABC):
     """
-    缓存键生成策略的抽象基类
-    
-    这是一个策略模式的实现，定义了缓存键生成的统一接口。
+    缓存键生成策略的抽象基类，定义了缓存键生成的统一接口。
     通过继承此类并实现 generate_key 方法，可以创建不同的缓存键生成策略。
     
     设计目的:
@@ -24,9 +22,7 @@ class CacheKeyStrategy(ABC):
     @abstractmethod
     def generate_key(self, query: str, **kwargs) -> str:
         """
-        抽象方法：生成缓存键
-        
-        所有具体策略都必须实现此方法，负责根据查询和上下文生成唯一的缓存键。
+        抽象方法：生成缓存键，所有具体策略都必须实现此方法，负责根据查询和上下文生成唯一的缓存键。
         
         参数:
             query: 查询字符串，通常是用户的输入或请求
