@@ -1,18 +1,3 @@
-"""
-本地搜索工具模块
-
-该模块实现了基于向量检索的本地搜索功能，专门用于在特定社区内部进行精确查询。
-本地搜索工具继承自基础搜索工具，添加了历史感知的检索能力和对话上下文管理，
-通过RAG（检索增强生成）技术提供高质量的搜索结果。
-
-核心特性：
-- 历史感知的检索器
-- 关键词提取与分类
-- 文档相关性过滤
-- 搜索结果缓存
-- 性能监控和异常处理
-- LangSmith跟踪支持
-"""
 from typing import List, Dict, Any
 import time
 import json
@@ -28,37 +13,28 @@ from config.settings import lc_description
 from search.tool.base import BaseSearchTool
 from search.local_search import LocalSearch
 
+
 class LocalSearchTool(BaseSearchTool):
     """
     本地搜索工具
     
-    该工具实现了基于向量检索的社区内部精确查询功能，继承自BaseSearchTool基类，
+    该工具实现了基于向量检索的社区内部精确查询功能（graphrag的局部检索），继承自BaseSearchTool基类，
     并增强了历史感知检索、对话上下文管理和结果缓存等特性。
-    
-    设计思路：
-    - 采用RAG（检索增强生成）架构
-    - 支持上下文感知的查询处理
-    - 实现关键词提取和分类
-    - 提供结果缓存优化性能
-    - 集成LangSmith跟踪功能
-    
+
     核心功能：
     1. 历史感知的查询处理
     2. 关键词提取与分类
     3. 文档相关性过滤
     4. 搜索结果缓存
-    5. 性能监控
+    5. LangSmith性能监控
     6. 异常处理和错误恢复
     """
-    
     def __init__(self):
         """
         初始化本地搜索工具
         
         实现思路:
-        1. 调用父类构造函数，设置特定的缓存目录
-        2. 初始化聊天历史列表，支持连续对话
-        3. 创建本地搜索器实例，传入语言模型和嵌入模型
+
         4. 获取检索器接口，用于后续查询处理
         5. 设置各种处理链，包括历史感知检索、问答和关键词提取
         

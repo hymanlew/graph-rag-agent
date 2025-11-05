@@ -441,9 +441,87 @@ result = self.gds.leiden.write(
 
 ### 3.6 各种代理服务实现
 
+#### BaseSearchTool
+
+- 搜索工具基础类，提供通用功能和基础设施。实现了共享的搜索逻辑、数据库连接、缓存机制和性能监控等功能。
+
+- 配置模型、基于上下文-关键字的缓存管理、Neo4j连接（langchain Neo4jGraph）、代理工作流搭建
+
+  - Neo4jGraph，graph.query(query, params=params)
+
+  - 原生的 GraphDatabase.driver.session().run(Query(text=cypher, timeout=10), parameters=params or {})
+
+    ```cypher
+    // 构建Neo4j向量搜索查询
+    cypher = """
+    CALL db.index.vector.queryNodes('vector', $limit, $embedding)
+    YIELD node, score
+    RETURN node.id AS id, score
+    ORDER BY score DESC
+    """
+    
+    // 基于文本匹配的搜索方法（关键词匹配，作为向量搜索的备选）
+    cypher = """
+    MATCH (e:__Entity__)
+    WHERE e.id CONTAINS $query OR e.description CONTAINS $query
+    RETURN e.id AS id
+    LIMIT $limit
+    """
+    ```
+
+- 数据向量相似度计算：numpy 计算余弦相似度
+
+- 设置处理链，用于配置各种LLM处理链和提示模板
+
+  ```python
+  # 创建动态工具类，注意继承BaseTool，实现自定义搜索工具与LangChain工具系统的无缝集成
+  def get_tool(self) -> BaseTool:
+      """
+      获取搜索工具实例，负责将BaseSearchTool的子类实例转换为LangChain的BaseTool对象。
+      通过创建动态的工具类，实现了自定义搜索工具与LangChain工具系统的无缝集成
+  
+      返回: BaseTool: 一个基于当前搜索工具类的LangChain BaseTool实例，包含名称、描述和执行方法
+  
+      技术特点：
+      - 动态类创建：在运行时动态定义工具类
+      - 委托模式：将工具执行委托给原始搜索工具实例
+      - 接口适配：将自定义工具适配到LangChain工具接口
+      - 同步执行：只实现同步执行方法
+      - 命名约定：使用类名小写作为工具名称
+      """
+      # 创建动态工具类，注意继承BaseTool
+      class DynamicSearchTool(BaseTool):
+          name : str= f"{self.__class__.__name__.lower()}"
+          description : str = "高级搜索工具，用于在知识库中查找信息"
+  
+          # 将调用委托给当前实例的search方法
+          def _run(self_tool, query: Any) -> str:
+              return self.search(query)
+  
+          # 异步执行
+          def _arun(self_tool, query: Any) -> str:
+              raise NotImplementedError("异步执行未实现")
+  
+      return DynamicSearchTool()
+  ```
+
+#### LocalSearchTool
+
+基于向量检索的社区内部精确查询功能（graphrag的局部检索），继承自 BaseSearchTool 基类。并增强了历史感知检索、对话上下文管理和结果缓存等特性。
+
+- 基于向量相似度的文本检索
+- 采用分层检索策略，先定位相关实体，再扩展获取相关文本和关系
+- 支持多种信息类型的整合（文本、实体、关系、社区- 计算每个社区包含的不同文本块数量作为权重）
+- 图结构的遍历与信息提取
+- 使用LLM生成结构化最终答案
+- 支持上下文管理（with语句）
+- 提供灵活的检索参数控制
+
+
+
 #### BaseAgent
 
-- 代理系统抽象基类，为所有具体代理实现提供统一接口和核心功能框架
+- 代理系统抽象基类，为所有具体代理实现提供了，统一接口和核心功能框架
 - 配置模型、多级缓存管理、工具绑定配置、代理工作流搭建
 - 代理工作流：
   - 从状态中提取消息列表
@@ -451,12 +529,17 @@ result = self.gds.leiden.write(
   - 增强用户消息，添加关键词元数据
   - 使用绑定工具的LLM模型分析消息
   - 生成回答，并返回更新后的状态
+  - 生成的回答，同步更新到缓存中。之后查询时，先查缓存
+
+#### GraphAgent
+
+基于知识图谱的代理（智能体），主要特点包括本地和全局搜索能力、文档相关性评估、以及两级缓存系统。
+
+- 本地搜索工具模块（）：
 
 **DeepResearchAgent**：深度研究代理，能够进行深入分析并展示思考过程
 
 **NaiveRagAgent**：基础检索增强生成代理
-
-**GraphAgent**：基于知识图谱的代理
 
 **HybridAgent**：混合型代理，结合多种策略
 

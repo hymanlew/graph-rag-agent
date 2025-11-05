@@ -165,13 +165,6 @@ class BaseAgent(ABC):
         返回:
             AsyncGenerator[str, None]: 流式响应生成器，产生文本块序列
             每个块是回答的一部分，确保流畅的用户阅读体验
-            
-        处理流程:
-        1. 从输入数据中提取消息列表和查询内容
-        2. 构建状态字典，包含消息和配置信息
-        3. 调用异步生成节点获取完整回答
-        4. 按句子或段落分块处理，实现自然的流式体验
-        5. 返回分块的文本内容，支持实时展示
         """
         # 获取消息
         messages = inputs.get("messages", [])
@@ -211,7 +204,6 @@ class BaseAgent(ABC):
         else:
             yield "无法生成响应。"
 
-    
     @abstractmethod
     def _add_retrieval_edges(self, workflow):
         """添加从检索节点到生成节点的边和条件
@@ -362,11 +354,8 @@ class BaseAgent(ABC):
         pass
 
     async def _generate_node_stream(self, state):
-        """生成回答节点逻辑的流式版本
-        
-        此方法实现异步流式回答生成，提供实时展示生成进度的功能。
-        它通过将回答分割成小块并逐个返回，使前端可以实现打字机效果，
-        提高用户体验和交互性。这是默认实现，子类应根据需要提供更高效的原生实现。
+        """生成流式输出回答 的节点
+        此方法实现异步流式回答生成，提供实时展示生成进度的功能。这是默认实现，子类应根据需要提供更高效的原生实现。
         
         参数:
             state: 当前工作流状态，包含检索结果和对话历史，是生成回答的上下文来源
@@ -374,13 +363,7 @@ class BaseAgent(ABC):
         返回:
             AsyncGenerator[str, None]: 流式响应生成器，产生文本块序列，
             每个块是回答的一部分，共同构成完整回答
-            
-        工作原理:
-        1. 首先调用同步的_generate_node方法获取完整回答
-        2. 从结果中提取消息内容
-        3. 将内容按字符分块，每个块4个字符
-        4. 逐个yield文本块，并添加微小延迟以创造流畅的流式体验
-        
+
         注意：
         这是一个简单实现，在实际应用中，子类应考虑使用原生流式API，
         避免先生成完整文本再分块，以提高性能和响应速度。
@@ -403,7 +386,6 @@ class BaseAgent(ABC):
     
     async def _generate_node_async(self, state):
         """生成回答节点逻辑的异步版本
-        
         此方法提供异步执行_generate_node的能力，确保在异步环境中
         不会阻塞事件循环，从而提高系统的并发处理能力。这是一种桥接
         同步和异步代码的常见模式，允许使用同步实现的生成逻辑在异步环境中工作。
@@ -413,11 +395,6 @@ class BaseAgent(ABC):
             
         返回:
             Dict: 包含生成的回答消息的状态字典，与_generate_node返回格式一致
-            
-        工作原理:
-        1. 定义内部同步函数sync_generate，封装_generate_node的调用
-        2. 使用asyncio的run_in_executor在线程池中执行同步代码
-        3. 异步等待执行结果并返回
         
         优化建议:
         - 子类可以提供更高效的原生异步实现，直接使用异步API
@@ -448,20 +425,6 @@ class BaseAgent(ABC):
             
         返回:
             str: 如果缓存命中，返回缓存的回答文本；否则返回None
-            
-        工作流程:
-        1. 记录开始时间，用于性能监控
-        2. 从查询中提取关键词，包括低级关键词和高级关键词
-        3. 构建缓存参数，包括会话ID和关键词信息
-        4. 调用缓存管理器的get_fast方法获取结果
-        5. 计算操作耗时并记录性能指标
-        6. 返回缓存结果（如果命中）或None（如果未命中）
-        
-        性能特点:
-        - 采用优化的缓存查找路径，减少延迟
-        - 包含详细的性能监控，便于系统调优
-        - 与上下文感知的缓存策略配合，提高缓存命中率
-        - 适用于对响应时间要求较高的场景
         
         使用场景:
         - 高频重复查询的快速响应
@@ -472,6 +435,7 @@ class BaseAgent(ABC):
         
         # 提取关键词，确保在缓存键中使用
         keywords = self._extract_keywords(query)
+        # 构建缓存参数
         cache_params = {
             "thread_id": thread_id,
             "low_level_keywords": keywords.get("low_level", []),  # 获取低级关键词
@@ -487,7 +451,6 @@ class BaseAgent(ABC):
             "duration": duration,  # 操作耗时
             "hit": result is not None  # 是否命中缓存
         })
-        
         return result
     
     def _check_all_caches(self, query: str, thread_id: str = "default"):
@@ -535,7 +498,6 @@ class BaseAgent(ABC):
                 "duration": cache_time,
                 "type": "fast"
             })
-            
             return fast_result
         
         # 3. 尝试常规缓存路径，但优化验证
@@ -553,7 +515,6 @@ class BaseAgent(ABC):
                 "duration": cache_time,
                 "type": "standard"
             })
-            
             return cached_response
         
         # 没有命中任何缓存
@@ -706,7 +667,6 @@ class BaseAgent(ABC):
             str: 查询的回答文本
         """
         overall_start = time.time()
-        
         # 确保查询字符串是干净的
         safe_query = query.strip()
         
@@ -834,7 +794,6 @@ class BaseAgent(ABC):
         cache_start = time.time()
         cached_response = self.cache_manager.get(safe_query, thread_id=thread_id)
         cache_time = time.time() - cache_start
-        
         if cached_response:
             # 同样按自然语言单位分块
             import re
@@ -997,8 +956,7 @@ class BaseAgent(ABC):
     
     def _validate_answer(self, query: str, answer: str, thread_id: str = "default") -> bool:
         """验证答案质量
-        
-        提供内置的答案质量验证机制，确保缓存的回答符合质量标准
+        提供自定义的答案质量验证函数，确保缓存的回答符合质量标准
         检查内容长度、错误模式和关键词相关性
         
         参数:

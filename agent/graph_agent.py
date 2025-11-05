@@ -279,6 +279,7 @@ class GraphAgent(BaseAgent):
 
         # 创建RAG链：提示模板 -> 大语言模型 -> 输出解析器
         rag_chain = prompt | self.llm | StrOutputParser()
+        # 此方法是非流式的，会阻塞，也会导致整个图执行时，都需等待
         response = rag_chain.invoke({
             "context": docs,    # 检索到的文档内容
             "question": question, # 用户问题
