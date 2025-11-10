@@ -119,11 +119,6 @@ class LocalSearch:
         - 基于社区排名和权重排序社区信息
         - 基于关系权重排序关系描述
         - 限制返回数量，避免信息过载
-        
-        业务意义:
-        - 提取多维度信息，形成全面的检索结果
-        - 优化检索结果排序，优先返回重要信息
-        - 构建结构化的上下文信息，便于LLM生成回答
         """
         return """
         WITH collect(node) as nodes
@@ -181,32 +176,15 @@ class LocalSearch:
             
         返回:
             检索器实例，可用于LangChain的链式调用
-            
-        实现思路:
-        1. 将参数化的Cypher查询中的占位符替换为实际值
-        2. 获取数据库连接信息
-        3. 基于现有索引初始化Neo4jVector向量存储
-        4. 配置检索参数并返回检索器实例
-        
-        设计特点:
-        - 支持与LangChain生态系统集成
-        - 允许通过链式调用方式使用检索功能
-        - 预配置了检索参数，简化使用流程
-        
-        业务意义:
-        - 提供标准化的检索接口
-        - 支持与LangChain工作流集成
-        - 便于在不同场景中复用检索逻辑
         """
-        # 生成包含所有检索参数的查询
+        # 生成包含所有检索参数的查询，将参数化的Cypher查询中的占位符替换为实际值
         final_query = self.retrieval_query.replace("$topChunks", str(self.top_chunks))\
             .replace("$topCommunities", str(self.top_communities))\
             .replace("$topOutsideRels", str(self.top_outside_rels))\
             .replace("$topInsideRels", str(self.top_inside_rels))
 
+        # 基于现有索引初始化Neo4jVector向量存储
         db_manager = get_db_manager()
-        
-        # 初始化向量存储
         vector_store = Neo4jVector.from_existing_index(
             self.embeddings,
             url=db_manager.neo4j_uri,
@@ -230,31 +208,6 @@ class LocalSearch:
             
         返回:
             str: 生成的结构化最终答案
-            
-        实现思路:
-        1. 创建聊天提示模板，定义系统提示和用户输入格式
-        2. 构建LangChain链：提示模板 -> LLM -> 输出解析器
-        3. 初始化Neo4j向量存储，用于相似度搜索
-        4. 执行相似度搜索，获取相关文档
-        5. 将检索到的上下文和用户查询传递给LLM
-        6. 生成并返回最终结构化回答
-        
-        搜索流程:
-        - 首先对查询进行向量嵌入
-        - 在向量索引中查找最相似的实体节点
-        - 使用retrieval_query提取相关文本、关系和社区信息
-        - 将检索结果组织为结构化上下文
-        - 利用LLM生成符合格式要求的回答
-        
-        输出格式控制:
-        - 使用三级标题标记主题
-        - 结构化段落展示主要内容
-        - 引用数据部分列出信息来源
-        
-        业务意义:
-        - 整合向量搜索和图查询的优势
-        - 生成结构化、易于理解的回答
-        - 提供引用信息，增强回答可信度
         """
         # 初始化对话提示模板，定义系统指令和输入输出格式
         prompt = ChatPromptTemplate.from_messages([
@@ -262,7 +215,6 @@ class LocalSearch:
             ("human", """
                 ---分析报告--- 
                 请注意，下面提供的分析报告按**重要性降序排列**。
-
                 {context}
 
                 用户的问题是：
@@ -290,6 +242,14 @@ class LocalSearch:
         )
         
         # 执行相似度搜索，获取相关文档
+        # Neo4jVector 类内部会自动处理 query 的向量转换
+        # # 1. 向量搜索阶段（自动执行）
+        # CALL db.index.vector.queryNodes("index_name", $top_entities, $query_vector)
+        # YIELD node, score
+        #
+        # # 2. 你的 final_query 阶段（处理搜索结果）
+        # WITH collect(node) as nodes  # nodes 已经是向量搜索的结果
+        # // 这里的所有查询都是基于已经找到的节点进行图遍历，只返回文本和元数据
         docs = vector_store.similarity_search(
             query,
             k=self.top_entities,
@@ -307,20 +267,13 @@ class LocalSearch:
             "input": query,
             "response_type": self.response_type
         })
-        
         return response
         
     def close(self):
         """
         关闭Neo4j驱动连接
-        
-        实现思路:
         - 预留的资源释放方法
         - 当前版本为空实现，可在需要时添加驱动关闭逻辑
-        
-        设计考虑:
-        - 提供统一的资源管理接口
-        - 支持未来扩展，如连接池管理、会话关闭等
         """
         pass
         

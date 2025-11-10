@@ -507,22 +507,87 @@ result = self.gds.leiden.write(
 
 #### LocalSearchTool
 
-基于向量检索的社区内部精确查询功能（graphrag的局部检索），继承自 BaseSearchTool 基类。并增强了历史感知检索、对话上下文管理和结果缓存等特性。
+基于向量检索的社区内部精确查询功能（graphrag 的局部检索），继承自 BaseSearchTool 基类。并增强了历史感知检索、对话上下文管理和结果缓存等特性。
 
 - 基于向量相似度的文本检索
 - 采用分层检索策略，先定位相关实体，再扩展获取相关文本和关系
+  - 内部进行排序后，获取最相关的数据
+  - 基于向量相似度进行排序，过滤文档
+
 - 支持多种信息类型的整合（文本、实体、关系、社区- 计算每个社区包含的文本块数量作为权重）
 - 图结构的遍历与信息提取
-- 使用LLM生成结构化最终答案
+- 使用 LLM + prompt 生成结构化最终答案
 - 支持上下文管理（with语句）
-- 提供灵活的检索参数控制
 
+#### GlobalSearchTool
 
+#### HybridSearchTool
+
+#### DeepResearchTool
+
+#### SearchTool cypher
+
+```python
+# 基于现有索引初始化Neo4jVector向量存储
+vector_store = Neo4jVector.from_existing_index(
+    self.embeddings_model,
+    url=neo4j_uri,
+    username=neo4j_username,
+    password=neo4j_password,
+    index_name=index_name, # 向量索引名称
+    retrieval_query=final_query # 检索查询 cypher
+)
+# 返回检索器
+return vector_store.as_retriever(
+    search_kwargs={"k": self.top_entities}
+)
+# 执行相似度搜索，获取相关文档
+# Neo4jVector 类内部会自动处理 query 的向量转换
+# # 1. 向量搜索阶段（自动执行）
+# CALL db.index.vector.queryNodes("index_name", $top_entities, $query_vector)
+# YIELD node, score
+#
+# # 2. 你的 final_query 阶段（处理搜索结果）
+# WITH collect(node) as nodes  # nodes 已经是向量搜索的结果
+# // 这里的所有查询都是基于已经找到的节点进行图遍历，只返回文本和元数据
+docs = vector_store.similarity_search(
+    query, # 用户的搜索查询字符串
+    k=self.top_entities,
+    params={
+        "topChunks": self.top_chunks,
+        "topCommunities": self.top_communities,
+        "topOutsideRels": self.top_outside_rels,
+        "topInsideRels": self.top_inside_rels,
+    }
+)
+
+    
+# node_label: 文本块节点标签，默认为'__Chunk__'
+# text_property: 用于计算 embedding 的文本属性名
+# embedding_property: 存储 embedding 数据的属性名
+vector_store = Neo4jVector.from_existing_graph(
+    self.embeddings,
+    node_label=node_label,
+    text_node_properties=[text_property],
+    embedding_node_property=embedding_property
+)
+
+await asyncio.to_thread(
+    Neo4jVector.from_existing_graph,  # 基于现有图数据结构创建向量索引属性，不改变结构，只添加属性
+    embedding=embeddings,  # 使用的嵌入模型（如OpenAIEmbeddings）
+    node_label="研究内容",  # 指定了具体的节点标签，只处理这个标签的节点
+    text_node_properties=["id", "text"],  # 从这些属性构建文本
+    embedding_node_property="embedding",  # 向量存储的属性名
+    index_name="vector_index",  # 向量索引名称，用于向量检索
+    keyword_index_name="entity_index",  # 全文检索索引名称，用于关键词检索
+    search_type=SearchType.HYBRID,  # 搜索策略：混合搜索，使用混合搜索类型
+)
+```
 
 #### BaseAgent
 
 - 代理系统抽象基类，为所有具体代理实现提供了，统一接口和核心功能框架
-- 配置模型、多级缓存管理、工具绑定配置、代理工作流搭建
+- 配置模型、多级缓存管理、工具绑定配置（SearchTool）、代理工作流搭建
 - 代理工作流：
   - 从状态中提取消息列表
   - 分析最新的用户消息，提取关键词（LLM / ）
@@ -537,13 +602,21 @@ result = self.gds.leiden.write(
 
 - 本地搜索工具模块（）：
 
-**DeepResearchAgent**：深度研究代理，能够进行深入分析并展示思考过程
+#### NaiveRagAgent
 
-**NaiveRagAgent**：基础检索增强生成代理
+基础检索增强生成代理
 
-**HybridAgent**：混合型代理，结合多种策略
+#### HybridAgent
 
-**FusionGraphRAGAgent**：融合图谱和检索增强的代理
+混合型代理，结合多种策略
+
+#### DeepResearchAgent
+
+深度研究代理，能够进行深入分析并展示思考过程
+
+#### FusionGraphRAGAgent
+
+融合图谱和检索增强的代理
 
 **基础代理文件**：<mcfile name="base.py" path="f:\graph-rag-agent\agent\base.py"></mcfile>
 
@@ -669,11 +742,13 @@ class HybridSearchTool(BaseSearchTool):
         # ...
 ```
 
-### 
 
 
+### ==== 
 
-### ====
+searchTool, agent 相关逻辑
+
+
 
 
 

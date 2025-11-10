@@ -32,12 +32,6 @@ class GlobalSearchTool(BaseSearchTool):
     - 批量处理：优化性能，减少计算资源消耗
     - 缓存机制：提高重复查询的响应速度
     - 容错处理：完善的错误捕获和降级策略
-    
-    业务意义：
-    - 支持跨领域知识检索
-    - 提供全局视角的信息分析
-    - 处理复杂的多维度查询
-    - 为Graph-RAG系统提供高级检索能力
     """
 
     def __init__(self, level: int = 0):
