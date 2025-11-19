@@ -1,18 +1,3 @@
-"""
-混合搜索工具模块
-
-该模块实现了类似LightRAG的双级检索策略，结合低级细节检索（实体和关系）
-和高级主题检索（社区和概念），提供全面且有深度的搜索结果。
-
-核心特性：
-- 双级关键词提取与分类
-- 多级检索策略（关键词搜索、向量搜索、文本搜索）
-- 低级内容检索（实体、关系、文本块）
-- 高级内容检索（社区主题）
-- 结果融合与答案生成
-- 性能监控和异常处理
-- 缓存优化
-"""
 import time
 import json
 from typing import List, Dict, Any
@@ -30,47 +15,27 @@ from search.tool.base import BaseSearchTool
 class HybridSearchTool(BaseSearchTool):
     """
     混合搜索工具
-    
-    实现了类似LightRAG的双级检索策略，结合局部细节检索和全局主题检索，
-    为用户提供全面且有深度的搜索结果。
-    
-    设计思路：
-    - 双级关键词分类（低级具体实体和高级抽象概念）
-    - 多级检索策略（关键词搜索、向量搜索、文本搜索）
-    - 并行检索低级和高级内容
-    - 结果融合与答案生成
-    - 完善的异常处理和降级策略
-    
+    实现了类似LightRAG的双级检索策略，结合局部细节检索（实体、关系、文本块）和全局主题检索（社区和概念），为用户提供全面且有深度的搜索结果。
+
     核心功能：
-    1. 双级关键词提取与分类
-    2. 实体和关系检索
-    3. 社区和主题检索
-    4. 混合结果生成
+    1. 双级关键词提取与分类（低级具体实体和高级抽象概念）
+    2. 多级检索策略（关键词搜索、向量搜索、文本搜索）
+    3. 并行检索低级和高级内容
+    4. 结果融合与答案生成
     5. 多级缓存优化
-    6. 性能监控
     7. 全局搜索工具生成
     """
     
     def __init__(self):
         """
         初始化混合搜索工具
-        
-        实现思路：
-        1. 设置检索参数，包括实体限制、关系跳数、社区数量等
-        2. 调用父类构造函数，设置特定的缓存目录
-        3. 设置处理链，包括查询处理链和关键词提取链
-        
+
         参数说明：
         - entity_limit: 最大检索实体数量
         - max_hop_distance: 最大跳数（关系扩展）
         - top_communities: 检索社区数量
         - batch_size: 批处理大小
         - community_level: 默认社区等级
-        
-        设计特点：
-        - 预配置检索参数，便于后续调整
-        - 继承基类的共享功能（数据库连接、缓存等）
-        - 专注于混合搜索策略的实现
         """
         # 检索参数配置
         self.entity_limit = 15        # 最大检索实体数量
@@ -86,25 +51,7 @@ class HybridSearchTool(BaseSearchTool):
         self._setup_chains()
     
     def _setup_chains(self):
-        """
-        设置处理链
-        
-        实现思路：
-        1. 创建主查询处理链，用于生成最终答案
-        2. 构建关键词提取链，用于双级关键词分类
-        3. 设置LLM输出解析器
-        
-        处理链设计特点：
-        - 主查询链结合低级和高级内容生成综合答案
-        - 关键词提取链将关键词分为具体实体和抽象概念两类
-        - 使用结构化提示模板控制输出格式
-        - 采用LangChain的链式API构建处理流程
-        
-        业务意义：
-        - 确保生成的答案既包含具体细节又有宏观视角
-        - 通过关键词分类优化检索策略
-        - 提供结构化、易读的输出格式
-        """
+        """设置处理链"""
         # 创建主查询处理链 - 用于生成最终答案
         self.query_prompt = ChatPromptTemplate.from_messages([
             ("system", LC_SYSTEM_PROMPT),
@@ -164,28 +111,6 @@ class HybridSearchTool(BaseSearchTool):
             
         返回:
             Dict[str, List[str]]: 包含低级和高级关键词的字典
-            
-        实现思路：
-        1. 检查缓存，避免重复计算
-        2. 如果缓存未命中，调用关键词提取链
-        3. 尝试解析JSON结果，包含多级错误处理
-        4. 如果JSON解析失败，使用备用方法提取关键词
-        5. 确保结果格式正确，包含必要的键
-        6. 记录LLM处理时间
-        7. 缓存提取结果
-        8. 异常处理，确保即使提取失败也能返回有效结果
-        
-        技术特点：
-        - 多级错误处理
-        - JSON解析失败时的备用策略
-        - 灵活的关键词提取方法
-        - 完善的结果格式验证
-        - 性能监控
-        
-        业务意义：
-        - 支持双级检索策略
-        - 即使在不理想情况下也能提取有用的关键词
-        - 提供结构化的关键词数据用于后续处理
         """
         # 检查缓存，避免重复计算
         cached_keywords = self.cache_manager.get(f"keywords:{query}")
@@ -193,13 +118,9 @@ class HybridSearchTool(BaseSearchTool):
             return cached_keywords
             
         try:
-            # 记录开始时间
-            llm_start = time.time()
-            
             # 调用LLM提取关键词
+            llm_start = time.time()
             result = self.keyword_chain.invoke({"query": query})
-            
-            # 调试输出
             print(f"DEBUG - LLM关键词结果: {result[:100]}...") if len(str(result)) > 100 else print(f"DEBUG - LLM关键词结果: {result}")
             
             # 解析JSON结果 - 多级错误处理
