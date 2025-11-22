@@ -209,22 +209,8 @@ class HybridSearchTool(BaseSearchTool):
             
         返回:
             pandas.DataFrame: 查询结果
-            
-        实现思路：
-        - 调用Neo4j驱动的execute_query方法
-        - 设置参数和结果转换器
-        - 返回pandas DataFrame格式的结果
-        
-        设计特点：
-        - 统一的数据库查询接口
-        - 结果转换为DataFrame便于后续处理
-        - 参数化查询，避免SQL注入
-        
-        业务意义：
-        - 提供统一的数据库访问方式
-        - 简化后续的数据处理和分析
-        - 增强代码的可读性和可维护性
         """
+        # 结果转换为DataFrame便于后续处理
         return self.driver.execute_query(
             cypher,
             parameters_=params,
@@ -241,18 +227,6 @@ class HybridSearchTool(BaseSearchTool):
             
         返回:
             List[str]: 实体ID列表
-            
-        实现思路：
-        - 调用基类的vector_search方法
-        - 包装基类功能，保持接口一致
-        
-        设计特点：
-        - 复用基类方法，减少代码重复
-        - 提供统一的向量搜索接口
-        
-        业务意义：
-        - 支持语义相似度搜索
-        - 增强搜索的准确性和相关性
         """
         return self.vector_search(query, limit)
 
@@ -266,25 +240,9 @@ class HybridSearchTool(BaseSearchTool):
             
         返回:
             List[str]: 匹配实体ID列表
-            
-        实现思路：
-        1. 构建全文搜索Cypher查询
-        2. 在实体ID和描述字段中搜索查询文本
-        3. 限制返回结果数量
-        4. 异常处理，确保即使搜索失败也能返回有效结果
-        
-        设计特点：
-        - 简单的基于字符串匹配的搜索
-        - 作为向量搜索失败时的备选方案
-        - 提供基本的文本检索功能
-        
-        业务意义：
-        - 提高系统鲁棒性
-        - 确保在向量搜索不可用时仍能提供服务
-        - 支持基本的关键词匹配搜索
         """
         try:
-            # 构建全文搜索查询
+            # 构建全文搜索查询，文本匹配，在实体ID和描述字段中搜索查询文本
             cypher = """
             MATCH (e:__Entity__)
             WHERE e.id CONTAINS $query OR e.description CONTAINS $query
@@ -301,7 +259,6 @@ class HybridSearchTool(BaseSearchTool):
                 return results['id'].tolist()
             else:
                 return []
-                
         except Exception as e:
             print(f"文本搜索也失败: {e}")
             return []
@@ -316,37 +273,19 @@ class HybridSearchTool(BaseSearchTool):
             
         返回:
             str: 格式化的低级内容
-            
-        实现思路：
-        1. 记录开始时间，用于性能监控
-        2. 首先使用关键词查询获取相关实体
-        3. 如果关键词搜索失败，尝试使用向量搜索
-        4. 如果向量搜索失败，使用基本文本匹配
-        5. 如果仍然没有结果，返回空内容提示
-        6. 分别查询实体信息、关系信息和相关文本块
-        7. 格式化结果，包含实体、关系和文本块信息
-        8. 记录查询时间，处理异常
-        
+
         多级检索策略：
         - 关键词搜索 → 向量搜索 → 文本搜索
         - 每一级都有降级处理
         - 确保即使在不理想情况下也能提供结果
-        
-        业务意义：
-        - 提供实体级别的详细信息
-        - 展示实体间的关系
-        - 提供相关文本证据
-        - 支持详细和具体的信息检索需求
         """
         query_start = time.time()
         
         # 首先使用关键词查询获取相关实体
         entity_ids = []
-        
         if keywords:
             keyword_params = {}
             keyword_conditions = []
-            
             for i, keyword in enumerate(keywords):
                 param_name = f"keyword{i}"
                 keyword_params[param_name] = keyword
@@ -391,6 +330,7 @@ class HybridSearchTool(BaseSearchTool):
             self.performance_metrics["query_time"] += time.time() - query_start
             return "没有找到相关的低级内容。"
         
+        # 分别查询实体信息、关系信息和相关文本块
         # 获取实体信息 - 不使用多跳关系以避免复杂查询
         entity_query = """
         // 从种子实体开始
@@ -438,13 +378,10 @@ class HybridSearchTool(BaseSearchTool):
         try:
             # 获取实体信息
             entity_results = self.db_query(entity_query, {"entity_ids": entity_ids})
-            
             # 获取关系信息
             relation_results = self.db_query(relation_query, {"entity_ids": entity_ids})
-            
             # 获取文本块信息
             chunk_results = self.db_query(chunk_query, {"entity_ids": entity_ids})
-            
             # 记录查询时间
             self.performance_metrics["query_time"] += time.time() - query_start
             
@@ -498,34 +435,12 @@ class HybridSearchTool(BaseSearchTool):
             
         返回:
             str: 格式化的高级内容
-            
-        实现思路：
-        1. 记录开始时间，用于性能监控
-        2. 根据提供的高级关键词构建查询条件
-        3. 如果没有关键词，使用原始查询文本
-        4. 构建社区查询，根据社区等级和关键词筛选
-        5. 按社区排名排序，限制返回数量
-        6. 格式化结果，展示社区ID和摘要
-        7. 记录查询时间，处理异常
-        
-        设计特点：
-        - 基于社区的主题概念检索
-        - 支持关键词过滤和排序
-        - 结构化输出格式
-        - 性能监控和异常处理
-        
-        业务意义：
-        - 提供宏观层面的主题理解
-        - 支持概念性和主题性查询
-        - 增强搜索结果的深度和广度
-        - 为最终答案提供概念框架
         """
         query_start = time.time()
         
-        # 构建关键词条件
+        # 根据提供的高级关键词构建查询条件
         keyword_conditions = []
         params = {"level": self.community_level, "limit": self.top_communities}
-        
         if keywords:
             for i, keyword in enumerate(keywords):
                 param_name = f"keyword{i}"
@@ -537,7 +452,7 @@ class HybridSearchTool(BaseSearchTool):
         // 使用关键词过滤社区
         MATCH (c:__Community__ {level: $level})
         """
-        
+
         if keyword_conditions:
             community_query += "WHERE " + " OR ".join(keyword_conditions)
         else:
@@ -545,7 +460,7 @@ class HybridSearchTool(BaseSearchTool):
             params["query"] = query
             community_query += "WHERE c.summary CONTAINS $query OR c.full_content CONTAINS $query"
         
-        # 添加排序和限制
+        # 构建社区查询，添加排序和限制
         community_query += """
         WITH c
         ORDER BY CASE WHEN c.community_rank IS NULL THEN 0 ELSE c.community_rank END DESC
@@ -555,11 +470,7 @@ class HybridSearchTool(BaseSearchTool):
         
         try:
             community_results = self.db_query(community_query, params)
-            
-            # 记录查询时间
             self.performance_metrics["query_time"] += time.time() - query_start
-            
-            # 处理结果
             if community_results.empty:
                 return "没有找到相关的高级内容。"
                 
@@ -586,41 +497,10 @@ class HybridSearchTool(BaseSearchTool):
             
         返回:
             str: 生成的最终答案
-            
-        实现思路：
-        1. 记录开始时间，用于性能监控
-        2. 解析输入参数，支持字符串和字典两种格式
-        3. 如果提供了预分类的关键词，直接使用；否则提取关键词
-        4. 构建缓存键，考虑查询内容和关键词
-        5. 检查缓存，避免重复搜索
-        6. 如果缓存未命中，并行检索低级和高级内容
-        7. 调用LLM生成最终答案
-        8. 缓存结果
-        9. 记录总处理时间
-        10. 异常处理，确保函数稳定运行
-        
-        搜索流程：
-        - 关键词提取与分类
-        - 并行检索低级和高级内容
-        - 结果融合与答案生成
-        - 缓存优化
-        
-        技术特点：
-        - 双级检索策略
-        - 多级缓存机制
-        - 完整的性能监控
-        - 健壮的错误处理
-        - 灵活的输入格式支持
-        
-        业务意义：
-        - 提供全面且有深度的搜索结果
-        - 结合具体细节和宏观视角
-        - 通过缓存优化性能
-        - 确保系统稳定可靠
         """
         overall_start = time.time()
         
-        # 解析输入
+        # 解析输入，支持字符串和字典两种格式
         if isinstance(query_input, dict) and "query" in query_input:
             query = query_input["query"]
             # 支持直接传入分类的关键词
@@ -633,7 +513,7 @@ class HybridSearchTool(BaseSearchTool):
             low_keywords = keywords.get("low_level", [])
             high_keywords = keywords.get("high_level", [])
         
-        # 构建缓存键
+        # 构建缓存键，考虑查询内容和关键词
         cache_key = query
         if low_keywords or high_keywords:
             cache_key = self.cache_manager.key_strategy.generate_key(
@@ -650,10 +530,8 @@ class HybridSearchTool(BaseSearchTool):
         try:
             # 1. 检索低级内容（实体和关系）
             low_level_content = self._retrieve_low_level_content(query, low_keywords)
-            
             # 2. 检索高级内容（社区和主题）
             high_level_content = self._retrieve_high_level_content(query, high_keywords)
-            
             # 3. 生成最终答案
             llm_start = time.time()
             
@@ -667,7 +545,6 @@ class HybridSearchTool(BaseSearchTool):
             
             # 记录LLM处理时间
             self.performance_metrics["llm_time"] += time.time() - llm_start
-            
             # 缓存结果
             self.cache_manager.set(
                 query, 
@@ -675,7 +552,6 @@ class HybridSearchTool(BaseSearchTool):
                 low_level_keywords=low_keywords,
                 high_level_keywords=high_keywords
             )
-            
             # 记录总处理时间
             self.performance_metrics["total_time"] = time.time() - overall_start
 
@@ -683,7 +559,6 @@ class HybridSearchTool(BaseSearchTool):
             if not result:
                 return "未找到相关信息"
             return result
-            
         except Exception as e:
             # 异常处理
             error_msg = f"搜索过程中出现错误: {str(e)}"
@@ -696,26 +571,6 @@ class HybridSearchTool(BaseSearchTool):
         
         返回:
             BaseTool: 全局搜索工具实例
-            
-        实现思路：
-        1. 定义内部类GlobalSearchTool，继承自BaseTool
-        2. 设置工具名称和描述
-        3. 实现_run方法，调用当前类的search方法
-        4. 仅使用高级关键词进行搜索，忽略低级关键词
-        5. 支持传入字典或字符串格式的查询
-        6. 定义_arun方法，表示不支持异步执行
-        7. 返回工具实例
-        
-        设计特点：
-        - 局部类定义，保持代码封装
-        - 专注于全局搜索功能
-        - 覆盖BaseTool接口
-        - 支持LangChain工具调用
-        
-        业务意义：
-        - 提供专注于全局主题的搜索功能
-        - 支持Agent和工具调用流程
-        - 便于集成到LangChain工作流中
         """
         class GlobalSearchTool(BaseTool):
             name : str = "global_retriever"

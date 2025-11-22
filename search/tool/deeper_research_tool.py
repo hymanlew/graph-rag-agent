@@ -5,7 +5,7 @@ import traceback
 import asyncio
 import re
 import os
-
+from search.tool.base import BaseSearchTool
 from langchain_core.tools import BaseTool
 from model.get_models import get_llm_model, get_embeddings_model
 from graph.core import connection_manager
@@ -30,20 +30,37 @@ from search.tool.reasoning.chain_of_exploration import ChainOfExplorationSearche
 from search.tool.reasoning.validator import complexity_estimate
 
 
-class DeeperResearchTool:
+class DeeperResearchTool(BaseSearchTool):
     """
     增强版深度研究工具
     
-    整合社区感知、动态知识图谱和Chain of Exploration等功能，
-    提供更全面的深度研究能力，并充分利用所有高级推理功能。
-    
-    该工具是Graph RAG Agent系统中的核心组件，通过整合多种先进技术，
-    为复杂查询提供更深入、全面和准确的分析和回答。
+    整合社区感知、动态知识图谱和 Chain of Exploration 等功能，通过多步骤的迭代思考-搜索-推理过程，
+    提供更全面的深度研究能力，并充分利用所有高级推理功能（整合了多种搜索策略和推理机制）。
+
+    核心特性：
+    - 多步骤思考-搜索-推理循环（迭代式深度搜索策略，逐步深入分析问题）
+    - 子查询分解与生成（将复杂问题分解为可管理的子问题）
+    - 双路径搜索（知识库和知识图谱）
+    - 多轮迭代思考与搜索（结构化思考过程，记录完整的推理步骤）
+    - 自适应搜索：根据已收集的信息动态调整搜索策略
+    - 流式响应支持
+    - 答案验证和质量控制
+    - 实现多级缓存机制，减少重复计算
+    - 异常处理和优雅降级
+    - 性能监控和日志记录
+
+    结合多种搜索工具的优势，与其他工具的协同：
+    - 继承自BaseSearchTool，实现基础搜索功能
+    - 使用HybridSearchTool，进行关键词提取和混合搜索
+    - 使用GlobalSearchTool，获取社区和主题信息
+    - 使用LocalSearchTool，进行知识库检索
+    - 集成ThinkingEngine，实现结构化思考过程
+    - 使用DualPathSearcher，整合知识库和知识图谱搜索
     """
     
-    def __init__(self, config=None, llm=None, embeddings=None, graph=None):
+    def __init__(self):
         """
-        初始化增强版深度研究工具
+        初始化增强版深度研究工具，通过组合多种专业工具和引擎，创建一个完整的深度研究框架，支持复杂问题的分析和解答。
         
         参数:
             config: 配置参数字典，可选
@@ -57,14 +74,12 @@ class DeeperResearchTool:
             - 增强模块（社区感知搜索、知识图谱构建、Chain of Exploration等）
             - 证据跟踪和缓存管理系统
         """
-        # 关键词缓存
+        # 设置特定的缓存目录
+        super().__init__(cache_dir="./cache/deep_research")
+        # 初始化关键词缓存字典
         self._keywords_cache = {}
 
         # 初始化基础组件
-        self.llm = llm or get_llm_model()
-        self.embeddings = embeddings or get_embeddings_model()
-        self.graph = graph or connection_manager.get_connection()
-
         self.hybrid_tool = HybridSearchTool()
         
         # 初始化增强模块
