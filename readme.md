@@ -84,11 +84,9 @@ graph-rag-agent/
 **此外，每个模块下都有单独的readme来介绍模块的功能**
 
 
-
 ## 🚀 相关资源
 
 - [Jean - 用国产大模型 + LangChain + Neo4j 建图全过程](https://zhuanlan.zhihu.com/p/716089164)
-- [GraphRAG vs DeepSearch？GraphRAG 提出者给你答案](https://mp.weixin.qq.com/s/FOT4pkEPHJR8xFvcVk1YFQ)
 
 ![svg](./assets/deepsearch.svg)
 
@@ -240,8 +238,6 @@ DEBUG - LLM关键词结果: {
 **执行任务 5/5**: exploration - Detailed criteria for excellent student admission in top universities
 **开始深度探索**...
 ✓ 深度探索完成
-
-
 
 
 ===== 测试查询: 学业奖学金有多少钱？ =====

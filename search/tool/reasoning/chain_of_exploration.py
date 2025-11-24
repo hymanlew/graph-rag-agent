@@ -8,10 +8,8 @@ import re
 
 class ChainOfExplorationSearcher:
     """
-    增强版Chain of Exploration检索器
-    
-    实现多步自主探索图谱的能力，具有适应性搜索宽度、记忆机制和路径优化功能。该类是Graph-RAG系统中
-    实现深度知识探索的核心组件，通过模拟人类探索过程，在知识图谱中进行有目的、有策略的多步探索，
+    增强版 Chain of Exploration（探索链）检索器
+    实现多步自主探索图谱的能力，具有适应性搜索宽度、记忆机制和路径优化功能。通过模拟人类探索过程，在知识图谱中进行有目的、有策略的多步探索，
     显著提高系统对复杂问题的理解和回答能力。
     
     核心功能：
@@ -21,62 +19,32 @@ class ChainOfExplorationSearcher:
     - 智能决策：利用LLM决定探索方向
     - 多维度评分：综合多种因素对节点进行相关性评估
     - 异步支持：提供异步探索接口
-    
-    设计特点：
-    - 策略驱动：基于查询动态生成探索策略
-    - 自适应参数：根据查询复杂度和当前状态动态调整
-    - 容错设计：完善的异常处理和降级策略
-    - 性能监控：记录各环节性能指标
-    - 结构化输出：返回标准化的探索结果
     """
     
     def __init__(self, graph, llm, embeddings_model):
         """
-        初始化Chain of Exploration检索器
-        
-        该方法负责初始化探索检索器的核心组件，包括图数据库连接、语言模型和向量嵌入模型。
-        它还设置了探索过程中需要的状态变量，如已访问节点、探索路径和记忆机制。
-        
+        初始化 Chain of Exploration 检索器
+
         参数:
             graph: 图数据库连接，用于查询实体和关系信息
             llm: 语言模型，用于生成策略和决策下一步探索方向
             embeddings_model: 向量嵌入模型，用于计算文本和实体的语义相似度
-        
-        实现思路：
-        1. 保存图数据库连接，用于后续查询
-        2. 保存语言模型，用于策略生成和决策
-        3. 保存向量嵌入模型，用于相似度计算
-        4. 初始化已访问节点集合，用于避免重复探索
-        5. 初始化探索路径列表，用于记录探索过程
-        6. 初始化探索记忆字典，用于缓存探索决策
-        7. 初始化性能指标字典，用于监控性能
-        
-        技术特点：
-        - 依赖注入：通过构造函数注入依赖组件
-        - 状态管理：初始化探索过程需要的各种状态变量
-        - 组件解耦：各功能组件独立，便于替换和扩展
-        - 资源准备：为后续探索操作准备必要的资源
-        
-        业务意义：
-        - 为深度知识探索提供必要的组件和配置
-        - 设置探索过程的状态管理机制
-        - 为复杂查询的深入分析奠定基础
-        - 支持基于图结构的多步推理
         """
         self.graph = graph
         self.llm = llm
         self.embeddings = embeddings_model
+        # 初始化已访问节点集合，用于避免重复探索
         self.visited_nodes = set()
+        # 初始化探索路径列表，用于记录探索过程
         self.exploration_path = []
-        self.exploration_memory = {}  # 存储已探索路径的记忆
+        # 初始化探索记忆字典，用于缓存探索决策，存储已探索路径的记忆
+        self.exploration_memory = {}
+        # 初始化性能指标字典，用于监控性能
         self.performance_metrics = {}
     
     def explore(self, query: str, starting_entities: List[str], max_steps: int = 5, exploration_width: int = 3):
         """
-        从起始实体开始探索图谱
-        
-        该方法是Chain of Exploration的核心实现，负责执行完整的多步探索过程。它从给定的起始实体出发，
-        按照预设的最大步数和基础探索宽度，智能地扩展探索范围，收集相关实体、关系和内容信息。
+        从起始实体开始探索图谱，按照预设的最大步数和基础探索宽度，智能地扩展探索范围，收集相关实体、关系和内容信息。
         通过动态调整探索策略和利用LLM进行决策，该方法能够有效地在知识图谱中发现与查询相关的信息。
         
         参数:
@@ -91,7 +59,7 @@ class ChainOfExplorationSearcher:
         实现思路：
         1. 记录开始时间，用于性能监控
         2. 检查起始实体是否为空，如果为空则返回空结果
-        3. 重置探索状态（已访问节点、探索路径）
+        3.
         4. 计算查询的嵌入向量，用于后续相似度计算
         5. 添加起始实体到探索路径
         6. 根据查询内容生成探索策略
@@ -128,7 +96,6 @@ class ChainOfExplorationSearcher:
         - 显著提升Graph-RAG系统的检索质量
         """
         start_time = time.time()
-        
         if not starting_entities:
             return {
                 "entities": [],
@@ -137,7 +104,7 @@ class ChainOfExplorationSearcher:
                 "exploration_path": []
             }
             
-        # 重置状态
+        # 重置探索状态（已访问节点、探索路径）
         self.visited_nodes = set(starting_entities)
         self.exploration_path = []
         query_embedding = self.embeddings.embed_query(query)

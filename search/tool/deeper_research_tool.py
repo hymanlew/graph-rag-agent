@@ -76,6 +76,7 @@ class DeeperResearchTool(BaseSearchTool):
         """
         # 设置特定的缓存目录
         super().__init__(cache_dir="./cache/deep_research")
+
         # 初始化关键词缓存字典
         self._keywords_cache = {}
 
